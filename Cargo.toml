@@ -1,0 +1,15 @@
+[package]
+name = "rust_mc_proto"
+description = "Minecraft packets protocol in pure rust"
+
+license-file = "LICENSE"
+
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+varint-rs = "2.2.0"
+flate2 = "1.0.30"
+bytebuffer = "2.2.0"
