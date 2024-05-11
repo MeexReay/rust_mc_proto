@@ -1,9 +1,7 @@
 # rust_mc_proto
-minecraft packets protocol in pure rust
-supports compression (`MinecraftConnection::set_compression`)
-
+minecraft packets protocol in pure rust \
+supports compression (`MinecraftConnection::set_compression`) \
 all types of packets you can find on [wiki.vg](https://wiki.vg/)
-
 
 ## how to use it
 
