@@ -1,5 +1,5 @@
 use std::io::{Write, Read};
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::net::{TcpStream, ToSocketAddrs};
 use bytebuffer::ByteBuffer;
 use varint_rs::{VarintWriter, VarintReader};
 use flate2::{Compress, Compression, Decompress, FlushCompress, Status, FlushDecompress};
@@ -109,15 +109,14 @@ impl Packet {
     }
 }
 
-pub struct Connection {
-    pub stream: TcpStream,
-    pub addr: SocketAddr,
+pub struct MinecraftConnection<T: Read + Write> {
+    pub stream: T,
     compress: bool,
     compress_threashold: usize
 }
 
-impl Connection {
-    pub fn build(addr: &str) -> Result<Connection, ProtocolError> {
+impl MinecraftConnection<TcpStream> {
+    pub fn connect(addr: &str) -> Result<MinecraftConnection<TcpStream>, ProtocolError> {
         let addr = match addr.to_socket_addrs() {
             Ok(mut i) => { match i.next() {
                 Some(i) => { i },
@@ -131,16 +130,21 @@ impl Connection {
             Err(_) => { return Err(ProtocolError::StreamConnectError) },
         };
     
-        Ok(Connection {
+        Ok(MinecraftConnection {
             stream,
-            addr,
             compress: false,
             compress_threashold: 0
         })
     }
+}
 
-    pub fn new(addr: &str) -> Connection {
-        Self::build(addr).unwrap()
+impl<T: Read + Write> MinecraftConnection<T> {
+    pub fn new(stream: T) -> MinecraftConnection<T> {
+        MinecraftConnection {
+            stream,
+            compress: false,
+            compress_threashold: 0
+        }
     }
 
     pub fn set_compression(&mut self, threashold: usize) {
@@ -240,13 +244,9 @@ impl Connection {
 
         Ok(())
     }
-
-    pub fn close(&mut self) {
-        self.stream.shutdown(std::net::Shutdown::Both).unwrap();
-    }
 }
 
-impl VarintWriter for Connection {
+impl<T: Read + Write> VarintWriter for MinecraftConnection<T> {
     type Error = ProtocolError;
 
     fn write(&mut self, byte: u8) -> Result<(), Self::Error> {
@@ -257,7 +257,7 @@ impl VarintWriter for Connection {
     }
 }
 
-impl VarintReader for Connection {
+impl<T: Read + Write> VarintReader for MinecraftConnection<T> {
     type Error = ProtocolError;
 
     fn read(&mut self) -> Result<u8, Self::Error> {
@@ -303,3 +303,5 @@ fn decompress_zlib(bytes: &[u8]) -> Result<Vec<u8>, ProtocolError> {
         Err(_) => Err(ProtocolError::ZlibError)
     }
 }
+
+pub type MCConn<T> = MinecraftConnection<T>;

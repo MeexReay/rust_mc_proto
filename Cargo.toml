@@ -1,6 +1,6 @@
 [package]
 name = "rust_mc_proto"
-description = "Minecraft packets protocol in pure rust"
+description = "minecraft packets protocol in pure rust"
 
 repository = "https://github.com/MeexReay/rust_mc_proto"
 license-file = "LICENSE"
