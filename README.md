@@ -2,8 +2,8 @@
 minecraft packets protocol in pure rust \
 supports compression (`MinecraftConnection::set_compression`) \
 all types of packets you can find on [wiki.vg](https://wiki.vg/) \
-[![on crates]](https://crates.io/crates/rust_mc_proto)
-[![on github]](https://github.com/MeexReay/rust_mc_proto)
+[on crates](https://crates.io/crates/rust_mc_proto)
+[on github](https://github.com/MeexReay/rust_mc_proto)
 
 ## how to use it
 
