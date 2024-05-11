@@ -221,26 +221,56 @@ impl<T: Read + Write> MinecraftConnection<T> {
             let mut pack = ByteBuffer::new();
 
             if packet.buffer.len() < self.compress_threashold {
-                pack.write_usize_varint(0).unwrap();
-                pack.write_u8_varint(packet.id).unwrap();
-                pack.write_all(packet.buffer.as_bytes()).unwrap();
+                match pack.write_usize_varint(0) {
+                    Ok(_) => {},
+                    Err(_) => { return Err(ProtocolError::WriteError) },
+                };
+                match pack.write_u8_varint(packet.id) {
+                    Ok(_) => {},
+                    Err(_) => { return Err(ProtocolError::WriteError) },
+                };
+                match pack.write_all(packet.buffer.as_bytes()) {
+                    Ok(_) => {},
+                    Err(_) => { return Err(ProtocolError::WriteError) },
+                };
             } else {
                 let mut data = ByteBuffer::new();
 
-                data.write_u8_varint(packet.id).unwrap();
-                data.write_all(packet.buffer.as_bytes()).unwrap();
+                match data.write_u8_varint(packet.id) {
+                    Ok(_) => {},
+                    Err(_) => { return Err(ProtocolError::WriteError) },
+                };
+                match data.write_all(packet.buffer.as_bytes()) {
+                    Ok(_) => {},
+                    Err(_) => { return Err(ProtocolError::WriteError) },
+                };
 
                 let data = compress_zlib(data.as_bytes())?;
 
-                pack.write_usize_varint(packet.buffer.len() + 1).unwrap();
-                pack.write_all(&data).unwrap();
+                match pack.write_usize_varint(packet.buffer.len() + 1) {
+                    Ok(_) => {},
+                    Err(_) => { return Err(ProtocolError::WriteError) },
+                };
+                match pack.write_all(&data) {
+                    Ok(_) => {},
+                    Err(_) => { return Err(ProtocolError::WriteError) },
+                };
             }
 
-            buf.write_usize_varint(pack.len()).unwrap();
-            buf.write_all(pack.as_bytes()).unwrap();
+            match buf.write_usize_varint(pack.len()) {
+                Ok(_) => {},
+                Err(_) => { return Err(ProtocolError::WriteError) },
+            };
+            match buf.write_all(pack.as_bytes()) {
+                Ok(_) => {},
+                Err(_) => { return Err(ProtocolError::WriteError) },
+            };
         }
 
-        self.stream.write_all(buf.as_bytes()).unwrap();
+        match self.stream.write_all(buf.as_bytes()) {
+            Ok(_) => {},
+            Err(_) => { return Err(ProtocolError::WriteError) },
+        };
 
         Ok(())
     }
