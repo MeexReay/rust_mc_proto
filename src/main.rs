@@ -33,10 +33,10 @@ fn read_status_response(conn: &mut MCConn<TcpStream>) -> Result<String, Protocol
 }
 
 fn main() {
-    let mut conn = MCConn::connect("sloganmc.ru:25565").unwrap();
+    let mut conn = MCConn::connect("msk1b.haku.su:25566").unwrap();
 
-    send_handshake(&mut conn, 765, "sloganmc.ru", 25565, 1).unwrap();
+    send_handshake(&mut conn, 765, "msk1b.haku.su", 25565, 1).unwrap();
     send_status_request(&mut conn).unwrap();
 
-    println!("{}", read_status_response(&mut conn).unwrap());
+    dbg!(read_status_response(&mut conn).unwrap());
 }

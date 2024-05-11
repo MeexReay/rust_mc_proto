@@ -79,23 +79,12 @@ impl Packet {
         let bytes = s.as_bytes();
 
         self.write_usize_varint(bytes.len())?;
-
-        for b in bytes {
-            self.write(*b)?;
-        }
-
-        Ok(())
+        self.write_bytes(bytes)
     }
 
     pub fn read_string(&mut self) -> Result<String, ProtocolError> {
         let size = self.read_usize_varint()?;
-        let mut bytes: Vec<u8> = vec![0; size];
-
-        for _ in 0..size {
-            bytes.push(self.read()?);
-        }
-
-        match String::from_utf8(bytes) {
+        match String::from_utf8(self.read_bytes(size)?) {
             Ok(i) => Ok(i),
             Err(_) => Err(ProtocolError::StringParseError)
         }
@@ -105,6 +94,21 @@ impl Packet {
         match self.buffer.write_all(&short.to_be_bytes()) {
             Ok(_) => Ok(()),
             Err(_) => Err(ProtocolError::UnsignedShortError),
+        }
+    }
+
+    pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ProtocolError> {
+        match Write::write_all(&mut self.buffer, bytes) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ProtocolError::WriteError),
+        }
+    }
+
+    pub fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
+        let mut bytes = vec![0; size];
+        match Read::read(&mut self.buffer, &mut bytes) {
+            Ok(_) => Ok(bytes),
+            Err(_) => Err(ProtocolError::WriteError)
         }
     }
 }
