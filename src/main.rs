@@ -1,8 +1,6 @@
-use std::net::TcpStream;
-use varint_rs::VarintWriter;
-use rust_mc_proto::{Packet, ProtocolError, MCConn};
+use rust_mc_proto::{Packet, ProtocolError, MCConnTcp, DataBufferReader, DataBufferWriter};
 
-fn send_handshake(conn: &mut MCConn<TcpStream>,
+fn send_handshake(conn: &mut MCConnTcp,
                 protocol_version: u16,
                 server_address: &str,
                 server_port: u16,
@@ -19,24 +17,26 @@ fn send_handshake(conn: &mut MCConn<TcpStream>,
     Ok(())
 }
 
-fn send_status_request(conn: &mut MCConn<TcpStream>) -> Result<(), ProtocolError> {
+fn send_status_request(conn: &mut MCConnTcp) -> Result<(), ProtocolError> {
     let packet = Packet::empty(0x00);
     conn.write_packet(&packet)?;
 
     Ok(())
 }
 
-fn read_status_response(conn: &mut MCConn<TcpStream>) -> Result<String, ProtocolError> {
+fn read_status_response(conn: &mut MCConnTcp) -> Result<String, ProtocolError> {
     let mut packet = conn.read_packet()?;
 
     packet.read_string()
 }
 
 fn main() {
-    let mut conn = MCConn::connect("msk1b.haku.su:25566").unwrap();
+    let mut conn = MCConnTcp::connect("localhost:25566").unwrap();
 
-    send_handshake(&mut conn, 765, "msk1b.haku.su", 25565, 1).unwrap();
+    send_handshake(&mut conn, 765, "localhost", 25565, 1).unwrap();
     send_status_request(&mut conn).unwrap();
 
-    dbg!(read_status_response(&mut conn).unwrap());
+    let motd = read_status_response(&mut conn).unwrap();
+
+    println!("Motd: {}", motd);
 }

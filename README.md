@@ -10,15 +10,14 @@ all types of packets you can find on [wiki.vg](https://wiki.vg/) \
 for reference:
 ```rust
 pub type MCConn<T> = MinecraftConnection<T>;
+pub type MCConnTcp = MinecraftConnection<TcpStream>;
 ```
 
 example how to get motd
 ```rust
-use std::net::TcpStream;
-use varint_rs::VarintWriter;
-use rust_mc_proto::{Packet, ProtocolError, MCConn};
+use rust_mc_proto::{Packet, ProtocolError, MCConnTcp, DataBufferReader, DataBufferWriter};
 
-fn send_handshake(conn: &mut MCConn<TcpStream>,
+fn send_handshake(conn: &mut MCConnTcp,
                 protocol_version: u16,
                 server_address: &str,
                 server_port: u16,
@@ -35,26 +34,28 @@ fn send_handshake(conn: &mut MCConn<TcpStream>,
     Ok(())
 }
 
-fn send_status_request(conn: &mut MCConn<TcpStream>) -> Result<(), ProtocolError> {
+fn send_status_request(conn: &mut MCConnTcp) -> Result<(), ProtocolError> {
     let packet = Packet::empty(0x00);
     conn.write_packet(&packet)?;
 
     Ok(())
 }
 
-fn read_status_response(conn: &mut MCConn<TcpStream>) -> Result<String, ProtocolError> {
+fn read_status_response(conn: &mut MCConnTcp) -> Result<String, ProtocolError> {
     let mut packet = conn.read_packet()?;
 
     packet.read_string()
 }
 
 fn main() {
-    let mut conn = MCConn::connect("sloganmc.ru:25565").unwrap();
+    let mut conn = MCConnTcp::connect("localhost:25566").unwrap();
 
-    send_handshake(&mut conn, 765, "sloganmc.ru", 25565, 1).unwrap();
+    send_handshake(&mut conn, 765, "localhost", 25565, 1).unwrap();
     send_status_request(&mut conn).unwrap();
 
-    println!("{}", read_status_response(&mut conn).unwrap()); // prints servers motd in json
+    let motd = read_status_response(&mut conn).unwrap();
+
+    println!("Motd: {}", motd);
 }
 ```
 

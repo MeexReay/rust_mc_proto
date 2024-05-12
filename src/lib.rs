@@ -1,8 +1,22 @@
 use std::io::{Write, Read};
 use std::net::{TcpStream, ToSocketAddrs};
-use bytebuffer::ByteBuffer;
-use varint_rs::{VarintWriter, VarintReader};
+
 use flate2::{Compress, Compression, Decompress, FlushCompress, Status, FlushDecompress};
+use bytebuffer::ByteBuffer;
+
+pub trait Zigzag<T> { fn zigzag(&self) -> T; }
+impl Zigzag<u8> for i8 { fn zigzag(&self) -> u8 { ((self << 1) ^ (self >> 7)) as u8 } }
+impl Zigzag<i8> for u8 { fn zigzag(&self) -> i8 { ((self >> 1) as i8) ^ (-((self & 1) as i8)) } }
+impl Zigzag<u16> for i16 { fn zigzag(&self) -> u16 { ((self << 1) ^ (self >> 15)) as u16 } }
+impl Zigzag<i16> for u16 { fn zigzag(&self) -> i16 { ((self >> 1) as i16) ^ (-((self & 1) as i16)) } }
+impl Zigzag<u32> for i32 { fn zigzag(&self) -> u32 { ((self << 1) ^ (self >> 31)) as u32 } }
+impl Zigzag<i32> for u32 { fn zigzag(&self) -> i32 { ((self >> 1) as i32) ^ (-((self & 1) as i32)) } }
+impl Zigzag<u64> for i64 { fn zigzag(&self) -> u64 { ((self << 1) ^ (self >> 63)) as u64 } }
+impl Zigzag<i64> for u64 { fn zigzag(&self) -> i64 { ((self >> 1) as i64) ^ (-((self & 1) as i64)) } }
+impl Zigzag<u128> for i128 { fn zigzag(&self) -> u128 { ((self << 1) ^ (self >> 127)) as u128 } }
+impl Zigzag<i128> for u128 { fn zigzag(&self) -> i128 { ((self >> 1) as i128) ^ (-((self & 1) as i128)) } }
+impl Zigzag<usize> for isize { fn zigzag(&self) -> usize { ((self << 1) ^ (self >> std::mem::size_of::<usize>()-1)) as usize } }
+impl Zigzag<isize> for usize { fn zigzag(&self) -> isize { ((self >> 1) as isize) ^ (-((self & 1) as isize)) } }
 
 #[derive(Debug)]
 pub enum ProtocolError {
@@ -23,33 +37,156 @@ pub struct Packet {
     pub buffer: ByteBuffer
 }
 
-impl VarintWriter for Packet {
-    type Error = ProtocolError;
- 
-    fn write(&mut self, byte: u8) -> Result<(), Self::Error> {
-        match Write::write(&mut self.buffer, &[byte]) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(ProtocolError::WriteError)
+
+// copied from varint-rs (im sorry T-T)
+
+macro_rules! read_varint {
+    ($type: ty, $self: expr) => {
+        {
+            let mut shift: $type = 0;
+            let mut decoded: $type = 0;
+            let mut next: u8 = 0;
+
+            loop {
+                match DataBufferReader::read_byte($self) {
+                    Ok(value) => next = value,
+                    Err(error) => Err(error)?
+                }
+
+                decoded |= ((next & 0b01111111) as $type) << shift;
+
+                if next & 0b10000000 == 0b10000000 {
+                    shift += 7;
+                } else {
+                    return Ok(decoded)
+                }
+            }
         }
-    }
+    };
 }
 
-impl VarintReader for Packet {
-    type Error = ProtocolError;
- 
-    fn read(&mut self) -> Result<u8, Self::Error> {
-        let mut buf = vec![0; 1];
+macro_rules! write_varint {
+    ($type: ty, $self: expr, $value: expr) => {
+        {
+            let mut value: $type = $value;
+    
+            if value == 0 {
+                DataBufferWriter::write_byte($self, 0)
+            } else {
+                while value >= 0b10000000 {
+                    let next: u8 = ((value & 0b01111111) as u8) | 0b10000000;
+                    value >>= 7;
+    
+                    match DataBufferWriter::write_byte($self, next) {
+                        Err(error) => Err(error)?,
+                        Ok(_) => ()
+                    }
+                }
+    
+                DataBufferWriter::write_byte($self, (value & 0b01111111) as u8)
+            }
+        }
+    };
+}
 
-        match Read::read(&mut self.buffer, &mut buf) {
+pub trait DataBufferReader {
+    fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError>;
+    fn read_byte(&mut self) -> Result<u8, ProtocolError>;
+
+    fn read_string(&mut self) -> Result<String, ProtocolError> {
+        let size = self.read_usize_varint()?;
+        match String::from_utf8(self.read_bytes(size)?) {
+            Ok(i) => Ok(i),
+            Err(_) => Err(ProtocolError::StringParseError)
+        }
+    }
+
+    fn read_unsigned_short(&mut self) -> Result<u16, ProtocolError> {
+        let bytes = self.read_bytes(2)?;
+        let bytes = [bytes[0], bytes[1]];
+        Ok(u16::from_be_bytes(bytes))
+    }
+
+    fn read_usize_varint(&mut self) -> Result<usize, ProtocolError> { read_varint!(usize, self) }
+    fn read_u8_varint(&mut self) -> Result<u8, ProtocolError> { read_varint!(u8, self) }
+    fn read_u16_varint(&mut self) -> Result<u16, ProtocolError> { read_varint!(u16, self) }
+    fn read_u32_varint(&mut self) -> Result<u32, ProtocolError> { read_varint!(u32, self) }
+    fn read_u64_varint(&mut self) -> Result<u64, ProtocolError> { read_varint!(u64, self) }
+    fn read_u128_varint(&mut self) -> Result<u128, ProtocolError> { read_varint!(u128, self) }
+
+    fn read_isize_varint(&mut self) -> Result<isize, ProtocolError> { Ok(self.read_usize_varint()?.zigzag()) }
+    fn read_i8_varint(&mut self) -> Result<i8, ProtocolError> { Ok(self.read_u8_varint()?.zigzag()) }
+    fn read_i16_varint(&mut self) -> Result<i16, ProtocolError> { Ok(self.read_u16_varint()?.zigzag()) }
+    fn read_i32_varint(&mut self) -> Result<i32, ProtocolError> { Ok(self.read_u32_varint()?.zigzag()) }
+    fn read_i64_varint(&mut self) -> Result<i64, ProtocolError> { Ok(self.read_u64_varint()?.zigzag()) }
+    fn read_i128_varint(&mut self) -> Result<i128, ProtocolError> { Ok(self.read_u128_varint()?.zigzag()) }
+}
+
+
+pub trait DataBufferWriter {
+    fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ProtocolError>;
+    fn write_byte(&mut self, byte: u8) -> Result<(), ProtocolError>;
+
+    fn write_string(&mut self, val: String) -> Result<(), ProtocolError> {
+        let bytes = val.as_bytes();
+
+        self.write_usize_varint(bytes.len())?;
+        self.write_bytes(bytes)
+    }
+    fn write_unsigned_short(&mut self, val: u16) -> Result<(), ProtocolError> {
+        match self.write_bytes(&val.to_be_bytes()) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ProtocolError::UnsignedShortError),
+        }
+    }
+
+    fn write_usize_varint(&mut self, val: usize) -> Result<(), ProtocolError> { write_varint!(usize, self, val) }
+    fn write_u8_varint(&mut self, val: u8) -> Result<(), ProtocolError> { write_varint!(u8, self, val) }
+    fn write_u16_varint(&mut self, val: u16) -> Result<(), ProtocolError> { write_varint!(u16, self, val) }
+    fn write_u32_varint(&mut self, val: u32) -> Result<(), ProtocolError> { write_varint!(u32, self, val) }
+    fn write_u64_varint(&mut self, val: u64) -> Result<(), ProtocolError> { write_varint!(u64, self, val) }
+    fn write_u128_varint(&mut self, val: u128) -> Result<(), ProtocolError> { write_varint!(u128, self, val) }
+
+    fn write_isize_varint(&mut self, val: isize) -> Result<(), ProtocolError> { self.write_usize_varint(val.zigzag()) }
+    fn write_i8_varint(&mut self, val: i8) -> Result<(), ProtocolError> { self.write_u8_varint(val.zigzag()) }
+    fn write_i16_varint(&mut self, val: i16) -> Result<(), ProtocolError> { self.write_u16_varint(val.zigzag()) }
+    fn write_i32_varint(&mut self, val: i32) -> Result<(), ProtocolError> { self.write_u32_varint(val.zigzag()) }
+    fn write_i64_varint(&mut self, val: i64) -> Result<(), ProtocolError> { self.write_u64_varint(val.zigzag()) }
+    fn write_i128_varint(&mut self, val: i128) -> Result<(), ProtocolError> { self.write_u128_varint(val.zigzag()) }
+}
+
+impl<R: Read> DataBufferReader for R {
+    fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
+        let mut buf = vec![0; size];
+        match self.read(&mut buf) {
             Ok(i) => {
-                if i == 1 { 
-                    Ok(buf[0]) 
-                } else { 
-                    Err(ProtocolError::ReadError) 
+                if i < size {
+                    Err(ProtocolError::ReadError)
+                } else {
+                    Ok(buf)
                 }
             },
             Err(_) => Err(ProtocolError::ReadError),
         }
+    }
+    fn read_byte(&mut self) -> Result<u8, ProtocolError> {
+        match self.read_bytes(1) {
+            Ok(i) => Ok(i[0]),
+            Err(i) => Err(i),
+        }
+    }
+}
+
+impl<W: Write> DataBufferWriter for W {
+    fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ProtocolError> {
+        match self.write_all(bytes) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ProtocolError::WriteError),
+        }
+    }
+
+    fn write_byte(&mut self, byte: u8) -> Result<(), ProtocolError> {
+        self.write_bytes(&[byte])
     }
 }
 
@@ -73,43 +210,41 @@ impl Packet {
             id,
             buffer: ByteBuffer::new()
         }
-    } 
-
-    pub fn write_string(&mut self, s: String) -> Result<(), ProtocolError> {
-        let bytes = s.as_bytes();
-
-        self.write_usize_varint(bytes.len())?;
-        self.write_bytes(bytes)
     }
+}
 
-    pub fn read_string(&mut self) -> Result<String, ProtocolError> {
-        let size = self.read_usize_varint()?;
-        match String::from_utf8(self.read_bytes(size)?) {
-            Ok(i) => Ok(i),
-            Err(_) => Err(ProtocolError::StringParseError)
+impl DataBufferReader for Packet {
+    fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
+        let mut buf = vec![0; size];
+        match self.buffer.read(&mut buf) {
+            Ok(i) => {
+                if i < size {
+                    Err(ProtocolError::ReadError)
+                } else {
+                    Ok(buf)
+                }
+            },
+            Err(_) => Err(ProtocolError::ReadError),
         }
     }
-
-    pub fn write_unsigned_short(&mut self, short: u16) -> Result<(), ProtocolError> {
-        match self.buffer.write_all(&short.to_be_bytes()) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(ProtocolError::UnsignedShortError),
+    fn read_byte(&mut self) -> Result<u8, ProtocolError> {
+        match self.read_bytes(1) {
+            Ok(i) => Ok(i[0]),
+            Err(i) => Err(i),
         }
     }
+}
 
-    pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ProtocolError> {
-        match Write::write_all(&mut self.buffer, bytes) {
+impl DataBufferWriter for Packet {
+    fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ProtocolError> {
+        match self.buffer.write_all(bytes) {
             Ok(_) => Ok(()),
             Err(_) => Err(ProtocolError::WriteError),
         }
     }
 
-    pub fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
-        let mut bytes = vec![0; size];
-        match Read::read(&mut self.buffer, &mut bytes) {
-            Ok(_) => Ok(bytes),
-            Err(_) => Err(ProtocolError::WriteError)
-        }
+    fn write_byte(&mut self, byte: u8) -> Result<(), ProtocolError> {
+        self.write_bytes(&[byte])
     }
 }
 
@@ -139,6 +274,41 @@ impl MinecraftConnection<TcpStream> {
             compress: false,
             compress_threashold: 0
         })
+    }
+}
+
+impl<T: Read + Write> DataBufferReader for MinecraftConnection<T> {
+    fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
+        let mut buf = vec![0; size];
+        match self.stream.read(&mut buf) {
+            Ok(i) => {
+                if i < size {
+                    Err(ProtocolError::ReadError)
+                } else {
+                    Ok(buf)
+                }
+            },
+            Err(_) => Err(ProtocolError::ReadError),
+        }
+    }
+    fn read_byte(&mut self) -> Result<u8, ProtocolError> {
+        match self.read_bytes(1) {
+            Ok(i) => Ok(i[0]),
+            Err(i) => Err(i),
+        }
+    }
+}
+
+impl<T: Read + Write> DataBufferWriter for MinecraftConnection<T> {
+    fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ProtocolError> {
+        match self.stream.write_all(bytes) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ProtocolError::WriteError),
+        }
+    }
+
+    fn write_byte(&mut self, byte: u8) -> Result<(), ProtocolError> {
+        self.write_bytes(&[byte])
     }
 }
 
@@ -280,36 +450,6 @@ impl<T: Read + Write> MinecraftConnection<T> {
     }
 }
 
-impl<T: Read + Write> VarintWriter for MinecraftConnection<T> {
-    type Error = ProtocolError;
-
-    fn write(&mut self, byte: u8) -> Result<(), Self::Error> {
-        match Write::write(&mut self.stream, &[byte]) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(ProtocolError::WriteError),
-        }
-    }
-}
-
-impl<T: Read + Write> VarintReader for MinecraftConnection<T> {
-    type Error = ProtocolError;
-
-    fn read(&mut self) -> Result<u8, Self::Error> {
-        let mut buf = vec![0; 1];
-
-        match Read::read(&mut self.stream, &mut buf) {
-            Ok(i) => {
-                if i == 1 { 
-                    Ok(buf[0]) 
-                } else { 
-                    Err(ProtocolError::ReadError) 
-                }
-            },
-            Err(_) => Err(ProtocolError::ReadError),
-        }
-    }
-}
-
 fn compress_zlib(bytes: &[u8]) -> Result<Vec<u8>, ProtocolError> {
     let mut compresser = Compress::new(Compression::best(), true);
     let mut output: Vec<u8> = Vec::new();
@@ -338,4 +478,6 @@ fn decompress_zlib(bytes: &[u8]) -> Result<Vec<u8>, ProtocolError> {
     }
 }
 
+
 pub type MCConn<T> = MinecraftConnection<T>;
+pub type MCConnTcp = MinecraftConnection<TcpStream>;

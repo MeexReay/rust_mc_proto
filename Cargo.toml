@@ -1,16 +1,15 @@
 [package]
 name = "rust_mc_proto"
-description = "minecraft packets protocol in pure rust"
+description = "lightweight minecraft protocol support in pure rust"
 
 repository = "https://github.com/MeexReay/rust_mc_proto"
 license-file = "LICENSE"
 readme = "README.md"
 keywords = ["minecraft", "protocol", "packets", "lightweight"]
 
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 
 [dependencies]
-varint-rs = "2.2.0"
 flate2 = "1.0.30"
 bytebuffer = "2.2.0"
