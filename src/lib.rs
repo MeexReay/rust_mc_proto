@@ -100,11 +100,44 @@ pub trait DataBufferReader {
             Err(_) => Err(ProtocolError::StringParseError)
         }
     }
-
     fn read_unsigned_short(&mut self) -> Result<u16, ProtocolError> {
-        let bytes = self.read_bytes(2)?;
-        let bytes = [bytes[0], bytes[1]];
-        Ok(u16::from_be_bytes(bytes))
+        match self.read_bytes(2)?.try_into() {
+            Ok(i) => Ok(u16::from_be_bytes(i)),
+            Err(_) => Err(ProtocolError::ReadError),
+        }
+    }
+    fn read_boolean(&mut self) -> Result<bool, ProtocolError> {
+        Ok(self.read_byte()? == 0x01)
+    }
+    fn read_short(&mut self) -> Result<i16, ProtocolError> {
+        match self.read_bytes(2)?.try_into() {
+            Ok(i) => Ok(i16::from_be_bytes(i)),
+            Err(_) => Err(ProtocolError::ReadError),
+        }
+    }
+    fn read_long(&mut self) -> Result<i64, ProtocolError> {
+        match self.read_bytes(8)?.try_into() {
+            Ok(i) => Ok(i64::from_be_bytes(i)),
+            Err(_) => Err(ProtocolError::ReadError),
+        }
+    }
+    fn read_float(&mut self) -> Result<f32, ProtocolError> {
+        match self.read_bytes(4)?.try_into() {
+            Ok(i) => Ok(f32::from_be_bytes(i)),
+            Err(_) => Err(ProtocolError::ReadError),
+        }
+    }
+    fn read_double(&mut self) -> Result<f64, ProtocolError> {
+        match self.read_bytes(8)?.try_into() {
+            Ok(i) => Ok(f64::from_be_bytes(i)),
+            Err(_) => Err(ProtocolError::ReadError),
+        }
+    }
+    fn read_int(&mut self) -> Result<i32, ProtocolError> {
+        match self.read_bytes(4)?.try_into() {
+            Ok(i) => Ok(i32::from_be_bytes(i)),
+            Err(_) => Err(ProtocolError::ReadError),
+        }
     }
 
     fn read_usize_varint(&mut self) -> Result<usize, ProtocolError> { read_varint!(usize, self) }
@@ -127,13 +160,49 @@ pub trait DataBufferWriter {
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ProtocolError>;
     fn write_byte(&mut self, byte: u8) -> Result<(), ProtocolError>;
 
-    fn write_string(&mut self, val: String) -> Result<(), ProtocolError> {
+    fn write_string(&mut self, val: &str) -> Result<(), ProtocolError> {
         let bytes = val.as_bytes();
 
         self.write_usize_varint(bytes.len())?;
         self.write_bytes(bytes)
     }
     fn write_unsigned_short(&mut self, val: u16) -> Result<(), ProtocolError> {
+        match self.write_bytes(&val.to_be_bytes()) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ProtocolError::UnsignedShortError),
+        }
+    }
+    fn write_boolean(&mut self, val: bool) -> Result<(), ProtocolError> {
+        match self.write_byte(if val { 0x01 } else { 0x00 }) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ProtocolError::UnsignedShortError),
+        }
+    }
+    fn write_short(&mut self, val: i16) -> Result<(), ProtocolError> {
+        match self.write_bytes(&val.to_be_bytes()) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ProtocolError::UnsignedShortError),
+        }
+    }
+    fn write_long(&mut self, val: i64) -> Result<(), ProtocolError> {
+        match self.write_bytes(&val.to_be_bytes()) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ProtocolError::UnsignedShortError),
+        }
+    }
+    fn write_float(&mut self, val: f32) -> Result<(), ProtocolError> {
+        match self.write_bytes(&val.to_be_bytes()) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ProtocolError::UnsignedShortError),
+        }
+    }
+    fn write_double(&mut self, val: f64) -> Result<(), ProtocolError> {
+        match self.write_bytes(&val.to_be_bytes()) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ProtocolError::UnsignedShortError),
+        }
+    }
+    fn write_int(&mut self, val: i32) -> Result<(), ProtocolError> {
         match self.write_bytes(&val.to_be_bytes()) {
             Ok(_) => Ok(()),
             Err(_) => Err(ProtocolError::UnsignedShortError),
@@ -274,6 +343,10 @@ impl MinecraftConnection<TcpStream> {
             compress: false,
             compress_threashold: 0
         })
+    }
+
+    pub fn close(&mut self) {
+        let _ = self.stream.shutdown(std::net::Shutdown::Both);
     }
 }
 
