@@ -410,42 +410,41 @@ impl<T: Read + Write> MinecraftConnection<T> {
                 Err(_) => { return Err(ProtocolError::ReadError) },
             };
 
-            Ok(Packet::from_bytes(packet_id, &data))
-        } else {
-            let packet_length = self.read_usize_varint()?;
-            let data_length = self.read_usize_varint()?;
-
-            if data_length == 0 {
-                let mut data: Vec<u8> = vec![0; packet_length - 1];
-                match self.stream.read_exact(&mut data) {
-                    Ok(i) => i,
-                    Err(_) => { return Err(ProtocolError::ReadError) },
-                };
-
-                let mut data_buf = ByteBuffer::from_vec(decompress_zlib(&data)?);
-
-                let packet_id = match data_buf.read_u8_varint() {
-                    Ok(i) => i,
-                    Err(_) => { return Err(ProtocolError::VarIntError) },
-                };
-                let mut data: Vec<u8> = vec![0; data_length - 1];
-                match data_buf.read_exact(&mut data) {
-                    Ok(i) => i,
-                    Err(_) => { return Err(ProtocolError::ReadError) },
-                };
-
-                Ok(Packet::from_bytes(packet_id, &data))
-            } else {
-                let packet_id = self.read_u8_varint()?;
-                let mut data: Vec<u8> = vec![0; data_length - 1];
-                match self.stream.read_exact(&mut data) {
-                    Ok(i) => i,
-                    Err(_) => { return Err(ProtocolError::ReadError) },
-                };
-
-                Ok(Packet::from_bytes(packet_id, &data))
-            }
+            return Ok(Packet::from_bytes(packet_id, &data))
         }
+        let packet_length = self.read_usize_varint()?;
+        let data_length = self.read_usize_varint()?;
+
+        if data_length == 0 {
+            let packet_id = self.read_u8_varint()?;
+            let mut data: Vec<u8> = vec![0; packet_length - 2];
+            match self.stream.read_exact(&mut data) {
+                Ok(i) => i,
+                Err(_) => { return Err(ProtocolError::ReadError) },
+            };
+
+            return Ok(Packet::from_bytes(packet_id, &data))
+        }
+
+        let mut data: Vec<u8> = vec![0; packet_length - 1];
+        match self.stream.read_exact(&mut data) {
+            Ok(i) => i,
+            Err(_) => { return Err(ProtocolError::ReadError) },
+        };
+
+        let mut data_buf = ByteBuffer::from_vec(decompress_zlib(&data)?);
+
+        let packet_id = match data_buf.read_u8_varint() {
+            Ok(i) => i,
+            Err(_) => { return Err(ProtocolError::VarIntError) },
+        };
+        let mut data: Vec<u8> = vec![0; data_length - 1];
+        match data_buf.read_exact(&mut data) {
+            Ok(i) => i,
+            Err(_) => { return Err(ProtocolError::ReadError) },
+        };
+
+        Ok(Packet::from_bytes(packet_id, &data))
     }
 
     pub fn write_packet(&mut self, packet: &Packet) -> Result<(), ProtocolError> {
