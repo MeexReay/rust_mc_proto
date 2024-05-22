@@ -3,6 +3,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 
 use flate2::{Compress, Compression, Decompress, FlushCompress, Status, FlushDecompress};
 use bytebuffer::ByteBuffer;
+use uuid::Uuid;
 
 pub trait Zigzag<T> { fn zigzag(&self) -> T; }
 impl Zigzag<u8> for i8 { fn zigzag(&self) -> u8 { ((self << 1) ^ (self >> 7)) as u8 } }
@@ -139,6 +140,12 @@ pub trait DataBufferReader {
             Err(_) => Err(ProtocolError::ReadError),
         }
     }
+    fn read_uuid(&mut self) -> Result<Uuid, ProtocolError> {
+        match self.read_bytes(16)?.try_into() {
+            Ok(i) => Ok(Uuid::from_u128(u128::from_be_bytes(i))),
+            Err(_) => Err(ProtocolError::ReadError),
+        }
+    }
 
     fn read_usize_varint(&mut self) -> Result<usize, ProtocolError> { read_varint!(usize, self) }
     fn read_u8_varint(&mut self) -> Result<u8, ProtocolError> { read_varint!(u8, self) }
@@ -165,6 +172,9 @@ pub trait DataBufferWriter {
 
         self.write_usize_varint(bytes.len())?;
         self.write_bytes(bytes)
+    }
+    fn write_uuid(&mut self, val: &Uuid) -> Result<(), ProtocolError> {
+        self.write_bytes(&val.as_u128().to_be_bytes())
     }
     fn write_unsigned_short(&mut self, val: u16) -> Result<(), ProtocolError> {
         match self.write_bytes(&val.to_be_bytes()) {

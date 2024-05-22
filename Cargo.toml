@@ -7,9 +7,10 @@ license-file = "LICENSE"
 readme = "README.md"
 keywords = ["minecraft", "protocol", "packets", "lightweight"]
 
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 
 [dependencies]
 flate2 = "1.0.30"
 bytebuffer = "2.2.0"
+uuid = "1.8.0"
