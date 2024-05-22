@@ -389,7 +389,7 @@ impl<T: Read + Write> DataBufferReader for MinecraftConnection<T> {
                     Ok(buf)
                 }
             },
-            Err(err) => Err(ProtocolError::ReadError),
+            Err(_) => Err(ProtocolError::ReadError),
         }
     }
     fn read_byte(&mut self) -> Result<u8, ProtocolError> {
@@ -415,7 +415,7 @@ impl<T: Read + Write> DataBufferWriter for MinecraftConnection<T> {
 
 impl<T: Read + Write> MinecraftConnection<T> {
     pub fn new(stream: T) -> MinecraftConnection<T> {
-        MinecraftConnection {
+        MinecraftConnection { 
             stream,
             compress: false,
             compress_threashold: 0
@@ -555,8 +555,8 @@ fn compress_zlib(bytes: &[u8]) -> Result<Vec<u8>, ProtocolError> {
     match compresser.compress_vec(&bytes, &mut output, FlushCompress::Finish) {
         Ok(i) => { 
             match i {
-                Status::BufError => Err(ProtocolError::ZlibError),
-                _ => Ok(output),
+                Status::Ok => Ok(output),
+                _ => Err(ProtocolError::ZlibError),
             }
         },
         Err(_) => Err(ProtocolError::ZlibError)
@@ -569,8 +569,8 @@ fn decompress_zlib(bytes: &[u8], packet_length: usize) -> Result<Vec<u8>, Protoc
     match compresser.decompress_vec(&bytes, &mut output, FlushDecompress::Sync) {
         Ok(i) => { 
             match i {
-                Status::BufError => Err(ProtocolError::ZlibError),
-                _ => Ok(output),
+                Status::Ok => Ok(output),
+                _ => Err(ProtocolError::ZlibError),
             }
         },
         Err(_) => Err(ProtocolError::ZlibError)
