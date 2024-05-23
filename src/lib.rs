@@ -1,6 +1,7 @@
 use std::io::{Write, Read};
 use std::net::{TcpStream, ToSocketAddrs};
 
+use flate2::bufread::ZlibDecoder;
 use flate2::{Compress, Compression, Decompress, FlushCompress, Status, FlushDecompress};
 use bytebuffer::ByteBuffer;
 use uuid::Uuid;
@@ -40,6 +41,31 @@ pub struct Packet {
 
 
 // copied from varint-rs (im sorry T-T)
+
+macro_rules! size_varint {
+    ($type: ty, $self: expr) => {
+        {
+            let mut shift: $type = 0;
+            let mut decoded: $type = 0;
+            let mut next: u8 = 0;
+
+            loop {
+                match DataBufferReader::read_byte($self) {
+                    Ok(value) => next = value,
+                    Err(error) => Err(error)?
+                }
+
+                decoded |= ((next & 0b01111111) as $type) << shift;
+
+                if next & 0b10000000 == 0b10000000 {
+                    shift += 7;
+                } else {
+                    return Ok((decoded, shift / 7))
+                }
+            }
+        }
+    };
+}
 
 macro_rules! read_varint {
     ($type: ty, $self: expr) => {
@@ -146,6 +172,8 @@ pub trait DataBufferReader {
             Err(_) => Err(ProtocolError::ReadError),
         }
     }
+
+    fn read_usize_varint_size(&mut self) -> Result<(usize, usize), ProtocolError> { size_varint!(usize, self) }
 
     fn read_usize_varint(&mut self) -> Result<usize, ProtocolError> { read_varint!(usize, self) }
     fn read_u8_varint(&mut self) -> Result<u8, ProtocolError> { read_varint!(u8, self) }
@@ -397,7 +425,7 @@ impl<T: Read + Write> DataBufferWriter for MinecraftConnection<T> {
 
 impl<T: Read + Write> MinecraftConnection<T> {
     pub fn new(stream: T) -> MinecraftConnection<T> {
-        MinecraftConnection {
+        MinecraftConnection { 
             stream,
             compress: false,
             compress_threashold: 0
@@ -408,7 +436,6 @@ impl<T: Read + Write> MinecraftConnection<T> {
         self.compress = true;
         self.compress_threashold = threashold;
     }
-
     pub fn read_packet(&mut self) -> Result<Packet, ProtocolError> {
         if !self.compress {
             let length = self.read_usize_varint()?;
@@ -420,42 +447,41 @@ impl<T: Read + Write> MinecraftConnection<T> {
                 Err(_) => { return Err(ProtocolError::ReadError) },
             };
 
-            Ok(Packet::from_bytes(packet_id, &data))
-        } else {
-            let packet_length = self.read_usize_varint()?;
-            let data_length = self.read_usize_varint()?;
-
-            if data_length == 0 {
-                let mut data: Vec<u8> = vec![0; packet_length - 1];
-                match self.stream.read_exact(&mut data) {
-                    Ok(i) => i,
-                    Err(_) => { return Err(ProtocolError::ReadError) },
-                };
-
-                let mut data_buf = ByteBuffer::from_vec(decompress_zlib(&data)?);
-
-                let packet_id = match data_buf.read_u8_varint() {
-                    Ok(i) => i,
-                    Err(_) => { return Err(ProtocolError::VarIntError) },
-                };
-                let mut data: Vec<u8> = vec![0; data_length - 1];
-                match data_buf.read_exact(&mut data) {
-                    Ok(i) => i,
-                    Err(_) => { return Err(ProtocolError::ReadError) },
-                };
-
-                Ok(Packet::from_bytes(packet_id, &data))
-            } else {
-                let packet_id = self.read_u8_varint()?;
-                let mut data: Vec<u8> = vec![0; data_length - 1];
-                match self.stream.read_exact(&mut data) {
-                    Ok(i) => i,
-                    Err(_) => { return Err(ProtocolError::ReadError) },
-                };
-
-                Ok(Packet::from_bytes(packet_id, &data))
-            }
+            return Ok(Packet::from_bytes(packet_id, &data))
         }
+        let packet_length = self.read_usize_varint_size()?;
+        let data_length = self.read_usize_varint_size()?;
+
+        if data_length.0 == 0 {
+            let packet_id = self.read_u8_varint()?;
+            let mut data: Vec<u8> = vec![0; packet_length.0 - 2];
+            match self.stream.read_exact(&mut data) {
+                Ok(i) => i,
+                Err(_) => { return Err(ProtocolError::ReadError) },
+            };
+
+            return Ok(Packet::from_bytes(packet_id, &data))
+        }
+
+        let mut data: Vec<u8> = vec![0; packet_length.0 - packet_length.1 - data_length.1];
+        match self.stream.read_exact(&mut data) {
+            Ok(i) => i,
+            Err(_) => { return Err(ProtocolError::ReadError) },
+        };
+
+        let mut data_buf = ByteBuffer::from_vec(decompress_zlib(&data, packet_length.0 - packet_length.1 - data_length.1)?);
+
+        let packet_id = match data_buf.read_u8_varint() {
+            Ok(i) => i,
+            Err(_) => { return Err(ProtocolError::VarIntError) },
+        };
+        let mut data: Vec<u8> = vec![0; packet_length.0 - packet_length.1 - data_length.1 - 1];
+        match data_buf.read_exact(&mut data) {
+            Ok(i) => i,
+            Err(_) => { return Err(ProtocolError::ReadError) },
+        };
+
+        Ok(Packet::from_bytes(packet_id, &data))
     }
 
     pub fn write_packet(&mut self, packet: &Packet) -> Result<(), ProtocolError> {
@@ -540,21 +566,21 @@ fn compress_zlib(bytes: &[u8]) -> Result<Vec<u8>, ProtocolError> {
         Ok(i) => { 
             match i {
                 Status::Ok => Ok(output),
-                _ => Err(ProtocolError::ZlibError)
+                _ => Err(ProtocolError::ZlibError),
             }
         },
         Err(_) => Err(ProtocolError::ZlibError)
     }
 }
 
-fn decompress_zlib(bytes: &[u8]) -> Result<Vec<u8>, ProtocolError> {
+fn decompress_zlib(bytes: &[u8], packet_length: usize) -> Result<Vec<u8>, ProtocolError> {
     let mut compresser = Decompress::new(true);
-    let mut output: Vec<u8> = Vec::new();
-    match compresser.decompress_vec(&bytes, &mut output, FlushDecompress::Finish) {
+    let mut output: Vec<u8> = Vec::with_capacity(packet_length);
+    match compresser.decompress_vec(&bytes, &mut output, FlushDecompress::Sync) {
         Ok(i) => { 
             match i {
                 Status::Ok => Ok(output),
-                _ => Err(ProtocolError::ZlibError)
+                _ => Err(ProtocolError::ZlibError),
             }
         },
         Err(_) => Err(ProtocolError::ZlibError)
