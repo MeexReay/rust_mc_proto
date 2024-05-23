@@ -1,7 +1,8 @@
 use std::io::{Write, Read};
 use std::net::{TcpStream, ToSocketAddrs};
 
-use flate2::bufread::ZlibDecoder;
+use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
 use flate2::{Compress, Compression, Decompress, FlushCompress, Status, FlushDecompress};
 use bytebuffer::ByteBuffer;
 use uuid::Uuid;
@@ -112,6 +113,15 @@ macro_rules! write_varint {
     
                 DataBufferWriter::write_byte($self, (value & 0b01111111) as u8)
             }
+        }
+    };
+}
+
+macro_rules! return_error {
+    ($ex: expr, $error: expr) => {
+        match $ex {
+            Ok(i) => i,
+            Err(_) => { return Err($error) },
         }
     };
 }
@@ -265,14 +275,8 @@ pub trait DataBufferWriter {
 impl<R: Read> DataBufferReader for R {
     fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
         let mut buf = vec![0; size];
-        match self.read(&mut buf) {
-            Ok(i) => {
-                if i < size {
-                    Err(ProtocolError::ReadError)
-                } else {
-                    Ok(buf)
-                }
-            },
+        match self.read_exact(&mut buf) {
+            Ok(_) => Ok(buf),
             Err(_) => Err(ProtocolError::ReadError),
         }
     }
@@ -391,14 +395,8 @@ impl MinecraftConnection<TcpStream> {
 impl<T: Read + Write> DataBufferReader for MinecraftConnection<T> {
     fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
         let mut buf = vec![0; size];
-        match self.stream.read(&mut buf) {
-            Ok(i) => {
-                if i < size {
-                    Err(ProtocolError::ReadError)
-                } else {
-                    Ok(buf)
-                }
-            },
+        match self.stream.read_exact(&mut buf) {
+            Ok(_) => Ok(buf),
             Err(_) => Err(ProtocolError::ReadError),
         }
     }
@@ -436,155 +434,81 @@ impl<T: Read + Write> MinecraftConnection<T> {
         self.compress = true;
         self.compress_threashold = threashold;
     }
+
     pub fn read_packet(&mut self) -> Result<Packet, ProtocolError> {
         if !self.compress {
             let length = self.read_usize_varint()?;
 
             let packet_id = self.read_u8_varint()?;
-            let mut data: Vec<u8> = vec![0; length - 1];
-            match self.stream.read_exact(&mut data) {
-                Ok(i) => i,
-                Err(_) => { return Err(ProtocolError::ReadError) },
-            };
+            let data = self.read_bytes(length - 1)?;
 
             return Ok(Packet::from_bytes(packet_id, &data))
         }
-        let packet_length = self.read_usize_varint_size()?;
-        let data_length = self.read_usize_varint_size()?;
 
-        if data_length.0 == 0 {
+        let packet_length = self.read_usize_varint()?;
+        let data_length = self.read_usize_varint()?;
+
+        if data_length == 0 {
             let packet_id = self.read_u8_varint()?;
-            let mut data: Vec<u8> = vec![0; packet_length.0 - 2];
-            match self.stream.read_exact(&mut data) {
-                Ok(i) => i,
-                Err(_) => { return Err(ProtocolError::ReadError) },
-            };
+            let data = self.read_bytes(packet_length - 2)?;
 
             return Ok(Packet::from_bytes(packet_id, &data))
         }
 
-        let mut data: Vec<u8> = vec![0; packet_length.0 - packet_length.1 - data_length.1];
-        match self.stream.read_exact(&mut data) {
-            Ok(i) => i,
-            Err(_) => { return Err(ProtocolError::ReadError) },
-        };
+        let data = self.read_bytes(packet_length - 2)?;
+        let mut data_buf = ByteBuffer::from_vec(decompress_zlib(&data, packet_length)?);
 
-        let mut data_buf = ByteBuffer::from_vec(decompress_zlib(&data, packet_length.0 - packet_length.1 - data_length.1)?);
+        let packet_id = return_error!(data_buf.read_u8_varint(), ProtocolError::VarIntError);
+        let mut packet_data = vec![0; data_length - 1];
+        return_error!(data_buf.read_exact(&mut packet_data), ProtocolError::ReadError);
 
-        let packet_id = match data_buf.read_u8_varint() {
-            Ok(i) => i,
-            Err(_) => { return Err(ProtocolError::VarIntError) },
-        };
-        let mut data: Vec<u8> = vec![0; packet_length.0 - packet_length.1 - data_length.1 - 1];
-        match data_buf.read_exact(&mut data) {
-            Ok(i) => i,
-            Err(_) => { return Err(ProtocolError::ReadError) },
-        };
-
-        Ok(Packet::from_bytes(packet_id, &data))
+        Ok(Packet::from_bytes(packet_id, &packet_data))
     }
 
-    pub fn write_packet(&mut self, packet: &Packet) -> Result<(), ProtocolError> {
+    pub fn write_packet(&mut self, pack: &Packet) -> Result<(), ProtocolError> {
         let mut buf = ByteBuffer::new();
 
         if !self.compress {
-            match buf.write_usize_varint(packet.buffer.len() + 1) {
-                Ok(_) => {},
-                Err(_) => { return Err(ProtocolError::WriteError) },
-            };
-            match buf.write_u8_varint(packet.id) {
-                Ok(_) => {},
-                Err(_) => { return Err(ProtocolError::WriteError) },
-            };
-            match buf.write_all(packet.buffer.as_bytes()) {
-                Ok(_) => {},
-                Err(_) => { return Err(ProtocolError::WriteError) },
-            };
+            return_error!(buf.write_usize_varint(pack.buffer.len() + 1), ProtocolError::WriteError);
+            return_error!(buf.write_u8_varint(pack.id), ProtocolError::WriteError);
+            return_error!(buf.write_all(pack.buffer.as_bytes()), ProtocolError::WriteError);
         } else {
-            let mut pack = ByteBuffer::new();
+            let mut packet = ByteBuffer::new();
 
-            if packet.buffer.len() < self.compress_threashold {
-                match pack.write_usize_varint(0) {
-                    Ok(_) => {},
-                    Err(_) => { return Err(ProtocolError::WriteError) },
-                };
-                match pack.write_u8_varint(packet.id) {
-                    Ok(_) => {},
-                    Err(_) => { return Err(ProtocolError::WriteError) },
-                };
-                match pack.write_all(packet.buffer.as_bytes()) {
-                    Ok(_) => {},
-                    Err(_) => { return Err(ProtocolError::WriteError) },
-                };
+            let mut data = ByteBuffer::new();
+            return_error!(data.write_u8_varint(pack.id), ProtocolError::WriteError);
+            return_error!(data.write_all(pack.buffer.as_bytes()), ProtocolError::WriteError);
+
+            if pack.buffer.len() < self.compress_threashold {
+                return_error!(packet.write_usize_varint(0), ProtocolError::WriteError); // data length
+                return_error!(packet.write_all(data.as_bytes()), ProtocolError::WriteError);
             } else {
-                let mut data = ByteBuffer::new();
-
-                match data.write_u8_varint(packet.id) {
-                    Ok(_) => {},
-                    Err(_) => { return Err(ProtocolError::WriteError) },
-                };
-                match data.write_all(packet.buffer.as_bytes()) {
-                    Ok(_) => {},
-                    Err(_) => { return Err(ProtocolError::WriteError) },
-                };
-
-                let data = compress_zlib(data.as_bytes())?;
-
-                match pack.write_usize_varint(packet.buffer.len() + 1) {
-                    Ok(_) => {},
-                    Err(_) => { return Err(ProtocolError::WriteError) },
-                };
-                match pack.write_all(&data) {
-                    Ok(_) => {},
-                    Err(_) => { return Err(ProtocolError::WriteError) },
-                };
+                return_error!(packet.write_usize_varint(data.len()), ProtocolError::WriteError); // data length
+                return_error!(packet.write_all(&compress_zlib(data.as_bytes())?), ProtocolError::WriteError);
             }
 
-            match buf.write_usize_varint(pack.len()) {
-                Ok(_) => {},
-                Err(_) => { return Err(ProtocolError::WriteError) },
-            };
-            match buf.write_all(pack.as_bytes()) {
-                Ok(_) => {},
-                Err(_) => { return Err(ProtocolError::WriteError) },
-            };
+            return_error!(buf.write_usize_varint(packet.len()), ProtocolError::WriteError); // packet length
+            return_error!(buf.write_all(packet.as_bytes()), ProtocolError::WriteError);
         }
 
-        match self.stream.write_all(buf.as_bytes()) {
-            Ok(_) => {},
-            Err(_) => { return Err(ProtocolError::WriteError) },
-        };
+        return_error!(self.write_bytes(buf.as_bytes()), ProtocolError::WriteError);
 
         Ok(())
     }
 }
 
 fn compress_zlib(bytes: &[u8]) -> Result<Vec<u8>, ProtocolError> {
-    let mut compresser = Compress::new(Compression::best(), true);
-    let mut output: Vec<u8> = Vec::new();
-    match compresser.compress_vec(&bytes, &mut output, FlushCompress::Finish) {
-        Ok(i) => { 
-            match i {
-                Status::Ok => Ok(output),
-                _ => Err(ProtocolError::ZlibError),
-            }
-        },
-        Err(_) => Err(ProtocolError::ZlibError)
-    }
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+    return_error!(encoder.write_all(bytes), ProtocolError::ZlibError);
+    let output = return_error!(encoder.finish(), ProtocolError::ZlibError);
+    Ok(output)
 }
 
 fn decompress_zlib(bytes: &[u8], packet_length: usize) -> Result<Vec<u8>, ProtocolError> {
-    let mut compresser = Decompress::new(true);
-    let mut output: Vec<u8> = Vec::with_capacity(packet_length);
-    match compresser.decompress_vec(&bytes, &mut output, FlushDecompress::Sync) {
-        Ok(i) => { 
-            match i {
-                Status::Ok => Ok(output),
-                _ => Err(ProtocolError::ZlibError),
-            }
-        },
-        Err(_) => Err(ProtocolError::ZlibError)
-    }
+    let mut decoder = ZlibDecoder::new(bytes);
+    let mut output = Vec::new();
+    return_error!(decoder.read_to_end(&mut output), ProtocolError::ZlibError);
+    Ok(output)
 }
 
 
