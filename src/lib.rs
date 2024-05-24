@@ -1,9 +1,5 @@
-use std::io::{Write, Read};
-use std::net::{TcpStream, ToSocketAddrs};
-
-use flate2::read::ZlibDecoder;
-use flate2::write::ZlibEncoder;
-use flate2::{Compress, Compression, Decompress, FlushCompress, Status, FlushDecompress};
+use std::{error::Error, fmt, io::{Read, Write}, net::{TcpStream, ToSocketAddrs}};
+use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
 use bytebuffer::ByteBuffer;
 use uuid::Uuid;
 
@@ -33,6 +29,14 @@ pub enum ProtocolError {
     ZlibError,
     UnsignedShortError
 }
+
+impl fmt::Display for ProtocolError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "An protocol error occured")
+    }
+}
+
+impl Error for ProtocolError {}
 
 #[derive(Debug)]
 pub struct Packet {
@@ -358,7 +362,7 @@ impl DataBufferReader for Packet {
     fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
         let mut buf = vec![0; size];
         match self.buffer.read_exact(&mut buf) {
-            Ok(i) => Ok(buf),
+            Ok(_) => Ok(buf),
             Err(_) => Err(ProtocolError::ReadError),
         }
     }

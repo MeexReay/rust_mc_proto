@@ -1,6 +1,5 @@
-use std::{net::TcpListener, sync::{atomic::AtomicBool, atomic::Ordering}, thread};
-use std::sync::mpsc::channel;
-use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConn, MCConnTcp, MinecraftConnection, Packet, ProtocolError};
+use std::{net::TcpListener, thread, sync::mpsc::channel};
+use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConnTcp, Packet};
 
 const LONG_TEXT: &str = "some_long_text_wow_123123123123123123123123";
 

@@ -1,6 +1,5 @@
 use std::{net::TcpListener, sync::{Arc, Mutex}, thread};
-
-use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConn, MCConnTcp, MinecraftConnection, Packet, ProtocolError};
+use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConnTcp, MinecraftConnection, Packet, ProtocolError};
 
 /*
 
@@ -44,7 +43,15 @@ fn accept_client(mut conn: MCConnTcp, server: Arc<Mutex<MinecraftServer>>) -> Re
         if handshake {
             if packet.id == 0x00 {
                 let mut status = Packet::empty(0x00);
-                status.write_string(&server.lock().unwrap().motd)?;
+
+                let serv = server.lock().unwrap();
+
+                let motd = serv.motd.clone();
+                let motd = motd.replace(
+                    "PROTOCOL_VERSION", 
+                    &serv.protocol_version.to_string());
+
+                status.write_string(&motd)?;
                 conn.write_packet(&status)?;
             } else if packet.id == 0x01 {
                 let mut status = Packet::empty(0x01);
@@ -83,7 +90,7 @@ fn main() {
         765,
         "{
             \"version\":{
-                \"protocol\":765,
+                \"protocol\":PROTOCOL_VERSION,
                 \"name\":\"Version name\"
             },
             \"players\":{
