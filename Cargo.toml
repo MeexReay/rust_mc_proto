@@ -13,10 +13,4 @@ edition = "2021"
 [dependencies]
 flate2 = "1.0.30"
 bytebuffer = "2.2.0"
-# uuid = "1.8.0"
-
-serde_json = "1.0.117"
-socks = "0.2.3"
-rand = "0.8.5"
-uuid = { version = "1.8.0", features = ["v3"] }
-md5 = "0.7.0"
+uuid = "1.8.0"
