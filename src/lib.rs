@@ -44,22 +44,24 @@ pub struct Packet {
     pub buffer: ByteBuffer
 }
 
-
-// copied from varint-rs (im sorry T-T)
+macro_rules! return_error {
+    ($ex: expr, $error: expr) => {
+        match $ex {
+            Ok(i) => i,
+            Err(_) => { return Err($error) },
+        }
+    };
+}
 
 macro_rules! size_varint {
     ($type: ty, $self: expr) => {
         {
             let mut shift: $type = 0;
             let mut decoded: $type = 0;
-            let mut next: u8 = 0;
             let mut size: $type = 0;
 
             loop {
-                match DataBufferReader::read_byte($self) {
-                    Ok(value) => next = value,
-                    Err(error) => Err(error)?
-                }
+                let next = return_error!(DataBufferReader::read_byte($self), ProtocolError::VarIntError);
 
                 size += 1;
 
@@ -80,13 +82,9 @@ macro_rules! read_varint {
         {
             let mut shift: $type = 0;
             let mut decoded: $type = 0;
-            let mut next: u8 = 0;
 
             loop {
-                match DataBufferReader::read_byte($self) {
-                    Ok(value) => next = value,
-                    Err(error) => Err(error)?
-                }
+                let next = return_error!(DataBufferReader::read_byte($self), ProtocolError::VarIntError);
 
                 decoded |= ((next & 0b01111111) as $type) << shift;
 
@@ -106,29 +104,17 @@ macro_rules! write_varint {
             let mut value: $type = $value;
     
             if value == 0 {
-                DataBufferWriter::write_byte($self, 0)
+                Ok(return_error!(DataBufferWriter::write_byte($self, 0), ProtocolError::VarIntError))
             } else {
                 while value >= 0b10000000 {
                     let next: u8 = ((value & 0b01111111) as u8) | 0b10000000;
                     value >>= 7;
     
-                    match DataBufferWriter::write_byte($self, next) {
-                        Err(error) => Err(error)?,
-                        Ok(_) => ()
-                    }
+                    return_error!(DataBufferWriter::write_byte($self, next), ProtocolError::VarIntError);
                 }
     
-                DataBufferWriter::write_byte($self, (value & 0b01111111) as u8)
+                Ok(return_error!(DataBufferWriter::write_byte($self, (value & 0b01111111) as u8), ProtocolError::VarIntError))
             }
-        }
-    };
-}
-
-macro_rules! return_error {
-    ($ex: expr, $error: expr) => {
-        match $ex {
-            Ok(i) => i,
-            Err(_) => { return Err($error) },
         }
     };
 }
