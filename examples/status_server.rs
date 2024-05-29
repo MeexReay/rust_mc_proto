@@ -4,7 +4,7 @@ use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConnTcp, MinecraftConn
 /*
 
     Example of simple server that sends motd 
-    to client like an vanilla minecraft server
+    to client like a vanilla minecraft server
 
 */
 
