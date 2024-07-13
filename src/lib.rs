@@ -175,8 +175,7 @@ pub trait DataBufferReader {
         }
     }
     fn read_uuid(&mut self) -> Result<Uuid, ProtocolError> {
-        let length = self.read_usize_varint()?;
-        match self.read_bytes(length)?.try_into() {
+        match self.read_bytes(16)?.try_into() {
             Ok(i) => Ok(Uuid::from_bytes(i)),
             Err(_) => Err(ProtocolError::ReadError),
         }
@@ -227,9 +226,7 @@ pub trait DataBufferWriter {
         self.write_bytes(bytes)
     }
     fn write_uuid(&mut self, val: &Uuid) -> Result<(), ProtocolError> {
-        let bytes = val.as_bytes();
-        self.write_usize_varint(bytes.len())?;
-        self.write_bytes(bytes)
+        self.write_bytes(val.as_bytes())
     }
     fn write_unsigned_short(&mut self, val: u16) -> Result<(), ProtocolError> {
         match self.write_bytes(&val.to_be_bytes()) {
