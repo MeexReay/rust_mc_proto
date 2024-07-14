@@ -14,7 +14,7 @@ fn main() {
 
         for stream in listener.incoming() {
             let mut stream = MCConnTcp::new(stream.unwrap());
-            stream.set_compression(2);
+            stream.set_compression(Some(2));
 
             let packet = stream.read_packet().unwrap();
             stream.write_packet(&packet).unwrap();
@@ -24,7 +24,7 @@ fn main() {
     rx.recv().unwrap();
 
     let mut conn = MCConnTcp::connect("localhost:44447").unwrap();
-    conn.set_compression(2);
+    conn.set_compression(Some(2));
     
     let mut packet = Packet::empty(0x12);
     packet.write_string(LONG_TEXT).unwrap();
