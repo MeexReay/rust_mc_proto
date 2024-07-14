@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, io::{Read, Write}, net::{TcpStream, ToSocketAddrs}};
+use std::{error::Error, fmt, io::{Read, Write}, net::{TcpStream, ToSocketAddrs}, sync::{Mutex, Arc}};
 use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
 use bytebuffer::ByteBuffer;
 use uuid::Uuid;
@@ -27,7 +27,8 @@ pub enum ProtocolError {
     ReadError,
     WriteError,
     ZlibError,
-    UnsignedShortError
+    UnsignedShortError,
+    CloneError
 }
 
 impl fmt::Display for ProtocolError {
@@ -493,66 +494,14 @@ impl<T: Read + Write> MinecraftConnection<T> {
         self.compression = threashold;
     }
 
-    /// Read [`Packet`](Packet) from stream
+    /// Read [`Packet`](Packet) from connection
     pub fn read_packet(&mut self) -> Result<Packet, ProtocolError> {
-        let mut data: Vec<u8>;
-
-        match self.compression {
-            Some(_) => {
-                let packet_length = self.read_usize_varint_size()?;
-                let data_length = self.read_usize_varint_size()?;
-    
-                data = self.read_bytes(packet_length.0 - data_length.1)?;
-    
-                if data_length.0 != 0 {
-                    data = decompress_zlib(&data, data_length.0)?;
-                }
-            },
-            None => {
-                let length = self.read_usize_varint()?;
-
-                data = self.read_bytes(length)?;
-            },
-        }
-
-        Ok(Packet::from_data(&data)?)
+        read_packet(&mut self.stream, Arc::new(Mutex::new(self.compression)))
     }
 
-    /// Write [`Packet`](Packet) to stream
+    /// Write [`Packet`](Packet) to connection
     pub fn write_packet(&mut self, packet: &Packet) -> Result<(), ProtocolError> {
-        let mut buf = ByteBuffer::new();
-
-        let mut data_buf = ByteBuffer::new();
-        data_buf.write_u8_varint(packet.id)?;
-        data_buf.write_buffer(&packet.buffer)?;
-
-        match self.compression {
-            Some(compress_threashold) => {
-                let mut packet_buf = ByteBuffer::new();
-
-                let mut data = data_buf.as_bytes().to_vec();
-                let mut data_length = 0;
-    
-                if data.len() >= compress_threashold {
-                    data_length = data.len();
-                    data = compress_zlib(&data)?;
-                }
-    
-                packet_buf.write_usize_varint(data_length)?;
-                DataBufferWriter::write_bytes(&mut packet_buf, &data)?;
-    
-                buf.write_usize_varint(packet_buf.len())?;
-                buf.write_buffer(&packet_buf)?;
-            },
-            None => {
-                buf.write_usize_varint(data_buf.len())?;
-                buf.write_buffer(&data_buf)?;
-            },
-        }
-
-        self.write_buffer(&buf)?;
-
-        Ok(())
+        write_packet(&mut self.stream, Arc::new(Mutex::new(self.compression)), packet)
     }
 }
 
@@ -575,3 +524,64 @@ pub type MCConn<T> = MinecraftConnection<T>;
 
 /// MinecraftConnection\<TcpStream\> shorter alias
 pub type MCConnTcp = MinecraftConnection<TcpStream>;
+
+/// Read [`Packet`](Packet) from stream
+pub fn read_packet<T: Read>(stream: &mut T, compression: Arc<Mutex<Option<usize>>>) -> Result<Packet, ProtocolError> {
+    let mut data: Vec<u8>;
+
+    let packet_length = stream.read_usize_varint_size()?;
+
+    match compression.lock().unwrap().as_mut() {
+        Some(_) => {
+            let data_length = stream.read_usize_varint_size()?;
+
+            data = stream.read_bytes(packet_length.0 - data_length.1)?;
+
+            if data_length.0 != 0 {
+                data = decompress_zlib(&data, data_length.0)?;
+            }
+        },
+        None => {
+            data = stream.read_bytes(packet_length.0)?;
+        },
+    }
+
+    Ok(Packet::from_data(&data)?)
+}
+
+/// Write [`Packet`](Packet) to stream
+pub fn write_packet<T: Write>(stream: &mut T, compression: Arc<Mutex<Option<usize>>>, packet: &Packet) -> Result<(), ProtocolError> {
+    let mut buf = ByteBuffer::new();
+
+    let mut data_buf = ByteBuffer::new();
+    data_buf.write_u8_varint(packet.id)?;
+    data_buf.write_buffer(&packet.buffer)?;
+
+    match compression.lock().unwrap().as_mut() {
+        Some(compress_threashold) => {
+            let mut packet_buf = ByteBuffer::new();
+
+            let mut data = data_buf.as_bytes().to_vec();
+            let mut data_length = 0;
+
+            if data.len() >= *compress_threashold {
+                data_length = data.len();
+                data = compress_zlib(&data)?;
+            }
+
+            packet_buf.write_usize_varint(data_length)?;
+            DataBufferWriter::write_bytes(&mut packet_buf, &data)?;
+
+            buf.write_usize_varint(packet_buf.len())?;
+            buf.write_buffer(&packet_buf)?;
+        },
+        None => {
+            buf.write_usize_varint(data_buf.len())?;
+            buf.write_buffer(&data_buf)?;
+        },
+    }
+
+    stream.write_buffer(&buf)?;
+
+    Ok(())
+}
