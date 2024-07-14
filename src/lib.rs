@@ -525,7 +525,7 @@ pub type MCConn<T> = MinecraftConnection<T>;
 /// MinecraftConnection\<TcpStream\> shorter alias
 pub type MCConnTcp = MinecraftConnection<TcpStream>;
 
-/// Read [`Packet`](Packet) from stream
+/// Read [`Packet`](Packet) from stream, if compression is usize::MAX, compression is disabled
 pub fn read_packet<T: Read>(stream: &mut T, compression: Arc<AtomicUsize>) -> Result<Packet, ProtocolError> {
     let mut data: Vec<u8>;
 
@@ -548,7 +548,7 @@ pub fn read_packet<T: Read>(stream: &mut T, compression: Arc<AtomicUsize>) -> Re
     Ok(Packet::from_data(&data)?)
 }
 
-/// Write [`Packet`](Packet) to stream
+/// Write [`Packet`](Packet) to stream, if compression is usize::MAX, compression is disabled
 pub fn write_packet<T: Write>(stream: &mut T, compression: Arc<AtomicUsize>, packet: &Packet) -> Result<(), ProtocolError> {
     let mut buf = ByteBuffer::new();
 
