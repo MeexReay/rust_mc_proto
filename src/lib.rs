@@ -689,10 +689,13 @@ impl<T: Read + Write> MinecraftConnection<T> {
 
     /// Set compression threshold
     pub fn set_compression(&mut self, threshold: Option<usize>) {
-        self.compression = Arc::new(AtomicUsize::new(match threshold {
-            Some(t) => t,
-            None => usize::MAX,
-        }));
+        self.compression.store(
+            match threshold {
+                Some(t) => t,
+                None => usize::MAX,
+            },
+            Ordering::Relaxed,
+        );
     }
 
     /// Get compression threshold
