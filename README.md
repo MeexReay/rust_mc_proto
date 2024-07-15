@@ -55,22 +55,21 @@ fn read_status_response(conn: &mut MCConnTcp) -> Result<String, ProtocolError> {
 }
 
 fn main() {
-    let mut conn = MCConnTcp::connect("localhost:25565").unwrap();
+    let mut conn = MCConnTcp::connect("sloganmc.ru:25565").unwrap();
 
-    send_handshake(&mut conn, 765, "localhost", 25565, 1).unwrap();
+    send_handshake(&mut conn, 765, "sloganmc.ru", 25565, 1).unwrap();
     send_status_request(&mut conn).unwrap();
 
     let motd = read_status_response(&mut conn).unwrap();
 
-    println!("Motd: {}", motd);
+    dbg!(motd);
 }
 ```
 
 example of simple server that only send motd and ping (`cargo run --example status_server`)
 ```rust
 use std::{net::TcpListener, sync::{Arc, Mutex}, thread};
-
-use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConn, MCConnTcp, MinecraftConnection, Packet, ProtocolError};
+use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConnTcp, MinecraftConnection, Packet, ProtocolError};
 
 /*
 
@@ -106,21 +105,31 @@ fn accept_client(mut conn: MCConnTcp, server: Arc<Mutex<MinecraftServer>>) -> Re
     loop {
         let mut packet = match conn.read_packet() {
             Ok(i) => i,
-            Err(_) => { break; },
+            Err(_) => { 
+                break; 
+            },
         };
 
         if handshake {
-            if packet.id == 0x00 {
+            if packet.id() == 0x00 {
                 let mut status = Packet::empty(0x00);
-                status.write_string(&server.lock().unwrap().motd)?;
+
+                let serv = server.lock().unwrap();
+
+                let motd = serv.motd.clone();
+                let motd = motd.replace(
+                    "PROTOCOL_VERSION", 
+                    &serv.protocol_version.to_string());
+
+                status.write_string(&motd)?;
                 conn.write_packet(&status)?;
-            } else if packet.id == 0x01 {
+            } else if packet.id() == 0x01 {
                 let mut status = Packet::empty(0x01);
                 status.write_long(packet.read_long()?)?;
                 conn.write_packet(&status)?;
             }
-        } else if packet.id == 0x00 {
-            let protocol_version = packet.read_u16_varint()?;
+        } else if packet.id() == 0x00 {
+            let protocol_version = packet.read_i32_varint()?;
             let server_address = packet.read_string()?;
             let server_port = packet.read_unsigned_short()?;
             let next_state = packet.read_u8_varint()?;
@@ -128,7 +137,7 @@ fn accept_client(mut conn: MCConnTcp, server: Arc<Mutex<MinecraftServer>>) -> Re
             if next_state != 1 { break; }
 
             println!("Client handshake info:");
-            println!("  IP: {}", conn.stream.peer_addr().unwrap());
+            println!("  IP: {}", conn.get_ref().peer_addr().unwrap());
             println!("  Protocol version: {}", protocol_version);
             println!("  Server address: {}", server_address);
             println!("  Server port: {}", server_port);
@@ -146,10 +155,31 @@ fn accept_client(mut conn: MCConnTcp, server: Arc<Mutex<MinecraftServer>>) -> Re
 
 fn main() {
     let server = MinecraftServer::new(
-        "localhost", 
+        "127.0.0.1", 
         25565, 
         765,
-        "{}" // TODO: write real motd
+        "{
+            \"version\":{
+                \"protocol\":PROTOCOL_VERSION,
+                \"name\":\"Version name\"
+            },
+            \"players\":{
+                \"online\":0,
+                \"max\":1,
+                \"sample\":[
+                    {
+                        \"uuid\": \"\",
+                        \"name\": \"Notch\"
+                    }
+                ]
+            },
+            \"description\": {
+                \"text\": \"Hello World!\",
+                \"color\": \"red\",
+                \"bold\": true
+            },
+            \"favicon\": \"data:image/png;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=\"
+        }"
     );
 
     let addr = server.server_ip.clone() + ":" + &server.server_port.to_string();
@@ -166,7 +196,5 @@ fn main() {
     }
 }
 ```
-
-also you can get minecraft connection from any stream: `MinecraftConnection::from_stream`
 
 I think this crate can be used for a server on rust idk -_-
