@@ -41,7 +41,7 @@ fn accept_client(mut conn: MCConnTcp, server: Arc<Mutex<MinecraftServer>>) -> Re
         };
 
         if handshake {
-            if packet.id == 0x00 {
+            if packet.id() == 0x00 {
                 let mut status = Packet::empty(0x00);
 
                 let serv = server.lock().unwrap();
@@ -53,12 +53,12 @@ fn accept_client(mut conn: MCConnTcp, server: Arc<Mutex<MinecraftServer>>) -> Re
 
                 status.write_string(&motd)?;
                 conn.write_packet(&status)?;
-            } else if packet.id == 0x01 {
+            } else if packet.id() == 0x01 {
                 let mut status = Packet::empty(0x01);
                 status.write_long(packet.read_long()?)?;
                 conn.write_packet(&status)?;
             }
-        } else if packet.id == 0x00 {
+        } else if packet.id() == 0x00 {
             let protocol_version = packet.read_i32_varint()?;
             let server_address = packet.read_string()?;
             let server_port = packet.read_unsigned_short()?;
@@ -67,7 +67,7 @@ fn accept_client(mut conn: MCConnTcp, server: Arc<Mutex<MinecraftServer>>) -> Re
             if next_state != 1 { break; }
 
             println!("Client handshake info:");
-            println!("  IP: {}", conn.stream.peer_addr().unwrap());
+            println!("  IP: {}", conn.get_ref().peer_addr().unwrap());
             println!("  Protocol version: {}", protocol_version);
             println!("  Server address: {}", server_address);
             println!("  Server port: {}", server_port);
