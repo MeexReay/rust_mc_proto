@@ -4,9 +4,11 @@ use std::{net::TcpListener, thread};
 #[test]
 fn test_compression_server_client() -> Result<(), ProtocolError> {
     fn test(first_text: &str) -> Result<bool, ProtocolError> {
-        let Ok(mut conn) = MCConnTcp::connect("localhost:44447") else { return test(first_text) };
+        let Ok(mut conn) = MCConnTcp::connect("localhost:44447") else {
+            return test(first_text);
+        };
         conn.set_compression(Some(5));
-        
+
         let mut packet = Packet::empty(0x12);
         packet.write_string(first_text)?;
         conn.write_packet(&packet)?;
@@ -22,7 +24,8 @@ fn test_compression_server_client() -> Result<(), ProtocolError> {
     }
 
     thread::spawn(move || -> Result<(), ProtocolError> {
-        let listener = TcpListener::bind("localhost:44447").or(Err(ProtocolError::StreamConnectError))?;
+        let listener =
+            TcpListener::bind("localhost:44447").or(Err(ProtocolError::StreamConnectError))?;
 
         for stream in listener.incoming() {
             let mut stream = MCConnTcp::new(stream.or(Err(ProtocolError::StreamConnectError))?);
@@ -45,22 +48,19 @@ fn test_compression_server_client() -> Result<(), ProtocolError> {
 
 #[test]
 fn test_compression_atomic_bytebuffer() -> Result<(), ProtocolError> {
-    let packet_1 = Packet::build(0x12, |p| {
-        p.write_bytes(b"1234567890qwertyuiopasdfghjklzxcvbnm")
-    })?;
+    let mut conn = MCConn::new(ByteBuffer::new());
+    conn.set_compression(Some(5));
 
-    let compression = Arc::new(AtomicUsize::new(5));
+    let mut packet_1 = Packet::empty(0x12);
+    packet_1.write_bytes(b"1234567890qwertyuiopasdfghjklzxcvbnm")?;
+    conn.write_packet(&packet_1)?;
 
-    let mut buffer = ByteBuffer::new();
+    let mut packet_2 = conn.read_packet()?;
 
-    write_packet_atomic(&mut buffer, compression.clone(), Ordering::Acquire, &packet_1)?;
-
-    buffer.set_rpos(0);
-    buffer.set_wpos(0);
-
-    let mut packet_2 = read_packet_atomic(&mut buffer, compression.clone(), Ordering::Acquire)?;
-
-    assert_eq!(packet_2.read_bytes(36)?, b"1234567890qwertyuiopasdfghjklzxcvbnm");
+    assert_eq!(
+        packet_2.read_bytes(36)?,
+        b"1234567890qwertyuiopasdfghjklzxcvbnm"
+    );
 
     Ok(())
 }
