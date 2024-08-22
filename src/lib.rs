@@ -77,12 +77,12 @@ impl MinecraftConnection<TcpStream> {
     }
 
     /// Close TcpStream
-    pub fn close(&mut self) {
+    pub fn close(&self) {
         let _ = self.stream.shutdown(std::net::Shutdown::Both);
     }
 
     /// Try clone MinecraftConnection with compression and stream
-    pub fn try_clone(&mut self) -> Result<MinecraftConnection<TcpStream>, ProtocolError> {
+    pub fn try_clone(&self) -> Result<MinecraftConnection<TcpStream>, ProtocolError> {
         match self.stream.try_clone() {
             Ok(stream) => Ok(MinecraftConnection {
                 stream,
@@ -278,7 +278,7 @@ pub fn write_packet_atomic<T: Write>(
 
     let mut data_buf = ByteBuffer::new();
     data_buf.write_u8_varint(packet.id())?;
-    data_buf.write_buffer(packet.buffer_ref())?;
+    data_buf.write_buffer(packet.buffer())?;
 
     let compress_threshold = compression.load(ordering);
 

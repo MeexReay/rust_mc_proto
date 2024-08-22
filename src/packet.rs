@@ -67,12 +67,12 @@ impl Packet {
     }
 
     /// Get mutable reference of buffer
-    pub fn buffer(&mut self) -> &mut ByteBuffer {
+    pub fn buffer_mut(&mut self) -> &mut ByteBuffer {
         &mut self.buffer
     }
 
     /// Get immutable reference of buffer
-    pub fn buffer_ref(&self) -> &ByteBuffer {
+    pub fn buffer(&self) -> &ByteBuffer {
         &self.buffer
     }
 
