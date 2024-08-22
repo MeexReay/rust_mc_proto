@@ -11,6 +11,10 @@ version = "0.1.15"
 edition = "2021"
 
 [dependencies]
-flate2 = "1.0.30"
-bytebuffer = "2.2.0"
+flate2 = "1.0.32"
+bytebuffer = "2.3.0"
 uuid = "1.10.0"
+
+[features]
+# default = [ "atomic_compression" ]
+atomic_compression = []

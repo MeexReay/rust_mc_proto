@@ -17,10 +17,13 @@ use std::{
     fmt,
     io::{Read, Write},
     net::{TcpStream, ToSocketAddrs},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    usize,
+};
+
+#[cfg(feature = "atomic_compression")]
+use sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
 /// Minecraft protocol error
@@ -49,7 +52,10 @@ impl Error for ProtocolError {}
 /// Minecraft connection, wrapper for stream with compression
 pub struct MinecraftConnection<T: Read + Write> {
     stream: T,
+    #[cfg(feature = "atomic_compression")]
     compression: Arc<AtomicUsize>,
+    #[cfg(not(feature = "atomic_compression"))]
+    compression: Option<usize>,
     compression_type: u32,
 }
 
@@ -71,7 +77,10 @@ impl MinecraftConnection<TcpStream> {
 
         Ok(MinecraftConnection {
             stream,
+            #[cfg(feature = "atomic_compression")]
             compression: Arc::new(AtomicUsize::new(usize::MAX)),
+            #[cfg(not(feature = "atomic_compression"))]
+            compression: None,
             compression_type: 1,
         })
     }
@@ -87,7 +96,7 @@ impl MinecraftConnection<TcpStream> {
             Ok(stream) => Ok(MinecraftConnection {
                 stream,
                 compression: self.compression.clone(),
-                compression_type: 1,
+                compression_type: self.compression_type,
             }),
             _ => Err(ProtocolError::CloneError),
         }
@@ -118,13 +127,17 @@ impl<T: Read + Write> MinecraftConnection<T> {
     pub fn new(stream: T) -> MinecraftConnection<T> {
         MinecraftConnection {
             stream,
+            #[cfg(feature = "atomic_compression")]
             compression: Arc::new(AtomicUsize::new(usize::MAX)),
+            #[cfg(not(feature = "atomic_compression"))]
+            compression: None,
             compression_type: 1,
         }
     }
 
     /// Set compression threshold
     pub fn set_compression(&mut self, threshold: Option<usize>) {
+        #[cfg(feature = "atomic_compression")]
         self.compression.store(
             match threshold {
                 Some(t) => t,
@@ -132,15 +145,26 @@ impl<T: Read + Write> MinecraftConnection<T> {
             },
             Ordering::Relaxed,
         );
+        #[cfg(not(feature = "atomic_compression"))]
+        {
+            self.compression = threshold;
+        }
     }
 
     /// Get compression threshold
     pub fn compression(&self) -> Option<usize> {
-        let threshold = self.compression.load(Ordering::Relaxed);
-        if threshold == usize::MAX {
-            None
-        } else {
-            Some(threshold)
+        #[cfg(feature = "atomic_compression")]
+        {
+            let threshold = self.compression.load(Ordering::Relaxed);
+            if threshold == usize::MAX {
+                return None
+            } else {
+                return Some(threshold)
+            }
+        }
+        #[cfg(not(feature = "atomic_compression"))]
+        {
+            self.compression
         }
     }
 
@@ -174,22 +198,36 @@ impl<T: Read + Write> MinecraftConnection<T> {
 
     /// Read [`Packet`](Packet) from connection
     pub fn read_packet(&mut self) -> Result<Packet, ProtocolError> {
-        read_packet_atomic(
-            &mut self.stream,
-            self.compression.clone(),
-            Ordering::Relaxed,
-        )
+        #[cfg(feature = "atomic_compression")]
+        {
+            return read_packet_atomic(
+                &mut self.stream,
+                self.compression.clone(),
+                Ordering::Relaxed,
+            )
+        }
+
+        #[cfg(not(feature = "atomic_compression"))]
+        read_packet(&mut self.stream, self.compression)
     }
 
     /// Write [`Packet`](Packet) to connection
     pub fn write_packet(&mut self, packet: &Packet) -> Result<(), ProtocolError> {
-        write_packet_atomic(
-            &mut self.stream,
-            self.compression.clone(),
-            Ordering::Relaxed,
-            self.compression_type,
-            packet,
-        )
+        #[cfg(feature = "atomic_compression")]
+        {
+            return write_packet_atomic(
+                &mut self.stream,
+                self.compression.clone(),
+                Ordering::Relaxed,
+                self.compression_type,
+                packet,
+            )
+        }
+
+        #[cfg(not(feature = "atomic_compression"))]
+        {
+            write_packet(&mut self.stream, self.compression, self.compression_type, packet)
+        }
     }
 }
 
@@ -225,24 +263,22 @@ pub type MCConn<T> = MinecraftConnection<T>;
 /// MinecraftConnection\<TcpStream\> shorter alias
 pub type MCConnTcp = MinecraftConnection<TcpStream>;
 
+
 /// Read [`Packet`](Packet) from stream
 ///
 /// `compression` here is atomic usize
 /// usize::MAX means that compression is disabled
 ///
 /// `ordering` is order how to load atomic
-pub fn read_packet_atomic<T: Read>(
+pub fn read_packet<T: Read>(
     stream: &mut T,
-    compression: Arc<AtomicUsize>,
-    ordering: Ordering,
+    compression: Option<usize>
 ) -> Result<Packet, ProtocolError> {
     let mut data: Vec<u8>;
 
     let packet_length = stream.read_usize_varint_size()?;
 
-    let compress_threashold = compression.load(ordering);
-
-    if compress_threashold != usize::MAX {
+    if compression.is_some() {
         let data_length = stream.read_usize_varint_size()?;
 
         data = stream.read_bytes(packet_length.0 - data_length.1)?;
@@ -259,7 +295,7 @@ pub fn read_packet_atomic<T: Read>(
 
 /// Write [`Packet`](Packet) to stream
 ///
-/// `compression` here is atomic usize
+/// `compression` here is usize
 /// usize::MAX means that compression is disabled
 ///
 /// `ordering` is order how to load atomic
@@ -267,10 +303,9 @@ pub fn read_packet_atomic<T: Read>(
 /// `compression_type` is integer from 0 (none) to 9 (longest)
 /// 1 is fast compression
 /// 6 is normal compression
-pub fn write_packet_atomic<T: Write>(
+pub fn write_packet<T: Write>(
     stream: &mut T,
-    compression: Arc<AtomicUsize>,
-    ordering: Ordering,
+    compression: Option<usize>,
     compression_type: u32,
     packet: &Packet,
 ) -> Result<(), ProtocolError> {
@@ -280,12 +315,10 @@ pub fn write_packet_atomic<T: Write>(
     data_buf.write_u8_varint(packet.id())?;
     data_buf.write_buffer(packet.buffer())?;
 
-    let compress_threshold = compression.load(ordering);
-
-    if compress_threshold != usize::MAX {
+    if let Some(compression) = compression {
         let mut packet_buf = ByteBuffer::new();
 
-        if data_buf.len() >= compress_threshold {
+        if data_buf.len() >= compression {
             let compressed_data = compress_zlib(data_buf.as_bytes(), compression_type)?;
             packet_buf.write_usize_varint(data_buf.len())?;
             packet_buf
@@ -306,4 +339,46 @@ pub fn write_packet_atomic<T: Write>(
     stream.write_buffer(&buf)?;
 
     Ok(())
+}
+
+/// Read [`Packet`](Packet) from stream
+///
+/// `compression` here is atomic usize
+/// usize::MAX means that compression is disabled
+///
+/// `ordering` is order how to load atomic
+#[cfg(feature = "atomic_compression")]
+pub fn read_packet_atomic<T: Read>(
+    stream: &mut T,
+    compression: Arc<AtomicUsize>,
+    ordering: Ordering,
+) -> Result<Packet, ProtocolError> {
+    read_packet(stream, match compression.load(ordering) {
+        usize::MAX => None,
+        i => Some(i),
+    })
+}
+
+/// Write [`Packet`](Packet) to stream
+///
+/// `compression` here is atomic usize
+/// usize::MAX means that compression is disabled
+///
+/// `ordering` is order how to load atomic
+///
+/// `compression_type` is integer from 0 (none) to 9 (longest)
+/// 1 is fast compression
+/// 6 is normal compression
+#[cfg(feature = "atomic_compression")]
+pub fn write_packet_atomic<T: Write>(
+    stream: &mut T,
+    compression: Arc<AtomicUsize>,
+    ordering: Ordering,
+    compression_type: u32,
+    packet: &Packet,
+) -> Result<(), ProtocolError> {
+    write_packet(stream, match compression.load(ordering) {
+        usize::MAX => None,
+        i => Some(i),
+    }, compression_type, packet)
 }

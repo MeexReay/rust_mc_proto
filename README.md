@@ -5,6 +5,23 @@ all types of packets you can find on [wiki.vg](https://wiki.vg/) \
 [crates](https://crates.io/crates/rust_mc_proto)
 [github](https://github.com/MeexReay/rust_mc_proto)
 
+## setup
+
+stable
+
+```toml
+rust_mc_proto = "0.1.15"
+```
+
+unstable
+
+```toml
+rust_mc_proto = { git = "https://github.com/MeexReay/rust_mc_proto" }
+```
+
+features:
+- atomic_compression (default)
+
 ## how to use it
 
 for reference:
