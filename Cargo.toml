@@ -16,5 +16,5 @@ bytebuffer = "2.3.0"
 uuid = "1.10.0"
 
 [features]
-# default = [ "atomic_compression" ]
+default = [ "atomic_compression" ]
 atomic_compression = []
