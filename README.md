@@ -2,8 +2,8 @@
 lightweight minecraft packets protocol support in pure rust \
 has compression (`MinecraftConnection::set_compression`) \
 all types of packets you can find on [wiki.vg](https://wiki.vg/) \
-[Crates](https://crates.io/crates/rust_mc_proto)
-[Github](https://github.com/MeexReay/rust_mc_proto)
+[crates](https://crates.io/crates/rust_mc_proto)
+[github](https://github.com/MeexReay/rust_mc_proto)
 
 ## how to use it
 
