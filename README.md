@@ -10,7 +10,7 @@ all types of packets you can find on [wiki.vg](https://wiki.vg/) \
 stable
 
 ```toml
-rust_mc_proto = "0.1.15"
+rust_mc_proto = "0.1.16"
 ```
 
 unstable
