@@ -21,7 +21,7 @@ use std::{
 };
 
 #[cfg(feature = "atomic_compression")]
-use sync::{
+use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
