@@ -87,66 +87,66 @@ pub trait DataBufferReader {
         size_varint!(usize, self)
     }
     /// Read VarInt as u8 with size in bytes (varint, size)
-    fn read_u8_varint_size(&mut self) -> Result<(u8, u8), ProtocolError> {
+    fn read_u8_varint_size(&mut self) -> Result<(u8, usize), ProtocolError> {
         size_varint!(u8, self)
     }
     /// Read VarInt as u16 with size in bytes (varint, size)
-    fn read_u16_varint_size(&mut self) -> Result<(u16, u16), ProtocolError> {
+    fn read_u16_varint_size(&mut self) -> Result<(u16, usize), ProtocolError> {
         size_varint!(u16, self)
     }
     /// Read VarInt as u32 with size in bytes (varint, size)
-    fn read_u32_varint_size(&mut self) -> Result<(u32, u32), ProtocolError> {
+    fn read_u32_varint_size(&mut self) -> Result<(u32, usize), ProtocolError> {
         size_varint!(u32, self)
     }
     /// Read VarInt as u64 with size in bytes (varint, size)
-    fn read_u64_varint_size(&mut self) -> Result<(u64, u64), ProtocolError> {
+    fn read_u64_varint_size(&mut self) -> Result<(u64, usize), ProtocolError> {
         size_varint!(u64, self)
     }
     /// Read VarInt as u128 with size in bytes (varint, size)
-    fn read_u128_varint_size(&mut self) -> Result<(u128, u128), ProtocolError> {
+    fn read_u128_varint_size(&mut self) -> Result<(u128, usize), ProtocolError> {
         size_varint!(u128, self)
     }
 
     /// Read VarInt as isize with size in bytes (varint, size)
-    fn read_isize_varint_size(&mut self) -> Result<(isize, isize), ProtocolError> {
+    fn read_isize_varint_size(&mut self) -> Result<(isize, usize), ProtocolError> {
         Ok({
             let i = self.read_usize_varint_size()?;
-            (i.0.zigzag(), i.1.zigzag())
+            (i.0.zigzag(), i.1)
         })
     }
     /// Read VarInt as i8 with size in bytes (varint, size)
-    fn read_i8_varint_size(&mut self) -> Result<(i8, i8), ProtocolError> {
+    fn read_i8_varint_size(&mut self) -> Result<(i8, usize), ProtocolError> {
         Ok({
             let i = self.read_u8_varint_size()?;
-            (i.0.zigzag(), i.1.zigzag())
+            (i.0.zigzag(), i.1)
         })
     }
     /// Read VarInt as i16 with size in bytes (varint, size)
-    fn read_i16_varint_size(&mut self) -> Result<(i16, i16), ProtocolError> {
+    fn read_i16_varint_size(&mut self) -> Result<(i16, usize), ProtocolError> {
         Ok({
             let i = self.read_u16_varint_size()?;
-            (i.0.zigzag(), i.1.zigzag())
+            (i.0.zigzag(), i.1)
         })
     }
     /// Read VarInt as i32 with size in bytes (varint, size)
-    fn read_i32_varint_size(&mut self) -> Result<(i32, i32), ProtocolError> {
+    fn read_i32_varint_size(&mut self) -> Result<(i32, usize), ProtocolError> {
         Ok({
             let i = self.read_u32_varint_size()?;
-            (i.0.zigzag(), i.1.zigzag())
+            (i.0.zigzag(), i.1)
         })
     }
     /// Read VarInt as i64 with size in bytes (varint, size)
-    fn read_i64_varint_size(&mut self) -> Result<(i64, i64), ProtocolError> {
+    fn read_i64_varint_size(&mut self) -> Result<(i64, usize), ProtocolError> {
         Ok({
             let i = self.read_u64_varint_size()?;
-            (i.0.zigzag(), i.1.zigzag())
+            (i.0.zigzag(), i.1)
         })
     }
     /// Read VarInt as i128 with size in bytes (varint, size)
-    fn read_i128_varint_size(&mut self) -> Result<(i128, i128), ProtocolError> {
+    fn read_i128_varint_size(&mut self) -> Result<(i128, usize), ProtocolError> {
         Ok({
             let i = self.read_u128_varint_size()?;
-            (i.0.zigzag(), i.1.zigzag())
+            (i.0.zigzag(), i.1)
         })
     }
 

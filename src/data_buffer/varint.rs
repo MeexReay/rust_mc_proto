@@ -2,7 +2,7 @@ macro_rules! size_varint {
     ($type:ty, $self:expr) => {{
         let mut shift: $type = 0;
         let mut decoded: $type = 0;
-        let mut size: $type = 0;
+        let mut size: usize = 0;
 
         loop {
             let next = DataBufferReader::read_byte($self).or(Err(ProtocolError::VarIntError))?;
