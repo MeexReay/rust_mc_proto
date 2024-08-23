@@ -50,9 +50,9 @@ fn read_status_response(conn: &mut MCConnTcp) -> Result<String, ProtocolError> {
 }
 
 fn main() {
-    let mut conn = MCConnTcp::connect("sloganmc.ru:25565").unwrap();
+    let mut conn = MCConnTcp::connect("mc.hypixel.net:25565").unwrap();
 
-    send_handshake(&mut conn, 765, "sloganmc.ru", 25565, 1).unwrap();
+    send_handshake(&mut conn, 765, "mc.hypixel.net", 25565, 1).unwrap();
     send_status_request(&mut conn).unwrap();
 
     let motd = read_status_response(&mut conn).unwrap();
