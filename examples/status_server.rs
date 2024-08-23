@@ -11,86 +11,86 @@ use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConnTcp, MinecraftConn
 struct MinecraftServer {
     server_ip: String,
     server_port: u16,
-    protocol_version: u16,
     motd: String
 }
 
 impl MinecraftServer {
     fn new(server_ip: &str,
             server_port: u16,
-            protocol_version: u16,
             motd: &str) -> Self {
         MinecraftServer {
             server_ip: server_ip.to_string(),
             server_port,
-            protocol_version,
             motd: motd.to_string()
         }
     }
-}
 
-fn accept_client(mut conn: MCConnTcp, server: Arc<Mutex<MinecraftServer>>) -> Result<(), ProtocolError> {
-    let mut handshake = false;
-    
-    loop {
-        let mut packet = match conn.read_packet() {
-            Ok(i) => i,
-            Err(_) => { 
-                break; 
-            },
-        };
+    fn start(self) {
+        let addr = self.server_ip.clone() + ":" + &self.server_port.to_string();
+        let listener = TcpListener::bind(addr).unwrap();
+        let server = Arc::new(Mutex::new(self));
 
-        if handshake {
-            if packet.id() == 0x00 {
-                let mut status = Packet::empty(0x00);
+        for stream in listener.incoming() {
+            let stream = stream.unwrap();
+            let local_server = server.clone();
 
-                let serv = server.lock().unwrap();
-
-                let motd = serv.motd.clone();
-                let motd = motd.replace(
-                    "PROTOCOL_VERSION", 
-                    &serv.protocol_version.to_string());
-
-                status.write_string(&motd)?;
-                conn.write_packet(&status)?;
-            } else if packet.id() == 0x01 {
-                let mut status = Packet::empty(0x01);
-                status.write_long(packet.read_long()?)?;
-                conn.write_packet(&status)?;
-            }
-        } else if packet.id() == 0x00 {
-            let protocol_version = packet.read_i32_varint()?;
-            let server_address = packet.read_string()?;
-            let server_port = packet.read_unsigned_short()?;
-            let next_state = packet.read_u8_varint()?;
-
-            if next_state != 1 { break; }
-
-            println!("Client handshake info:");
-            println!("  IP: {}", conn.get_ref().peer_addr().unwrap());
-            println!("  Protocol version: {}", protocol_version);
-            println!("  Server address: {}", server_address);
-            println!("  Server port: {}", server_port);
-
-            handshake = true;
-        } else {
-            break;
+            thread::spawn(move || {
+                Self::accept_client(MinecraftConnection::new(stream), local_server).unwrap();
+            });
         }
     }
 
-    conn.close();
+    fn accept_client(mut conn: MCConnTcp, server: Arc<Mutex<MinecraftServer>>) -> Result<(), ProtocolError> {
+        let mut handshake = false;
+        
+        loop {
+            let Ok(mut packet) = conn.read_packet() else { break; };
+    
+            if handshake {
+                if packet.id() == 0x00 {
+                    let motd = server.lock().unwrap().motd.clone();
 
-    Ok(())
+                    conn.write_packet(&Packet::build(0x00, |status| 
+                        status.write_string(&motd)
+                    )?)?;
+                } else if packet.id() == 0x01 {
+                    conn.write_packet(&Packet::build(0x01, |status| 
+                        status.write_long(packet.read_long()?)
+                    )?)?;
+                }
+            } else if packet.id() == 0x00 {
+                let protocol_version = packet.read_i32_varint()?;
+                let server_address = packet.read_string()?;
+                let server_port = packet.read_unsigned_short()?;
+                let next_state = packet.read_u8_varint()?;
+    
+                if next_state != 1 { break; }
+    
+                println!("Client handshake info:");
+                println!("  IP: {}", conn.get_ref().peer_addr().unwrap());
+                println!("  Protocol version: {}", protocol_version);
+                println!("  Server address: {}", server_address);
+                println!("  Server port: {}", server_port);
+    
+                handshake = true;
+            } else {
+                break;
+            }
+        }
+    
+        conn.close();
+    
+        Ok(())
+    }
 }
 
 fn main() {
     let server = MinecraftServer::new(
         "127.0.0.1", 
         25565, 
-        765,
         "{
             \"version\":{
-                \"protocol\":PROTOCOL_VERSION,
+                \"protocol\":765,
                 \"name\":\"Version name\"
             },
             \"players\":{
@@ -111,17 +111,5 @@ fn main() {
             \"favicon\": \"data:image/png;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=\"
         }"
     );
-
-    let addr = server.server_ip.clone() + ":" + &server.server_port.to_string();
-    let listener = TcpListener::bind(addr).unwrap();
-    let server = Arc::new(Mutex::new(server));
-
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
-        let local_server = server.clone();
-
-        thread::spawn(move || {
-            accept_client(MinecraftConnection::new(stream), local_server).unwrap();
-        });
-    }
+    server.start();
 }
