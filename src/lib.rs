@@ -85,6 +85,10 @@ impl MinecraftConnection<TcpStream> {
         })
     }
 
+    pub fn set_nonblocking(&mut self, state: bool) {
+        self.stream.set_nonblocking(state).unwrap();
+    }
+
     /// Close TcpStream
     pub fn close(&self) {
         let _ = self.stream.shutdown(std::net::Shutdown::Both);

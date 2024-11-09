@@ -11,7 +11,7 @@ rust_mc_proto = { git = "https://github.com/MeexReay/rust_mc_proto" } # unstable
 ```
 
 Features:
-- `atomic_compression` (default)
+- `atomic_compression`
 
 ## How to use
 
