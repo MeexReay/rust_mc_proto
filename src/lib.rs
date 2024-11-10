@@ -13,14 +13,10 @@ pub use crate::{
 use bytebuffer::ByteBuffer;
 use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
 use std::{
-    error::Error,
-    fmt,
-    io::{Read, Write},
-    net::{TcpStream, ToSocketAddrs},
-    usize,
+    error::Error, fmt, io::{Read, Write}, net::{TcpStream, ToSocketAddrs}, sync::atomic::AtomicBool, usize
 };
 
-#[cfg(feature = "atomic_compression")]
+#[cfg(feature = "atomic_clone")]
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -39,6 +35,7 @@ pub enum ProtocolError {
     ZlibError,
     UnsignedShortError,
     CloneError,
+    ConnectionClosedError
 }
 
 impl fmt::Display for ProtocolError {
@@ -52,11 +49,15 @@ impl Error for ProtocolError {}
 /// Minecraft connection, wrapper for stream with compression
 pub struct MinecraftConnection<T: Read + Write> {
     stream: T,
-    #[cfg(feature = "atomic_compression")]
+    #[cfg(feature = "atomic_clone")]
     compression: Arc<AtomicUsize>,
-    #[cfg(not(feature = "atomic_compression"))]
+    #[cfg(not(feature = "atomic_clone"))]
     compression: Option<usize>,
     compression_type: u32,
+    #[cfg(feature = "atomic_clone")]
+    is_alive: Arc<AtomicBool>,
+    #[cfg(not(feature = "atomic_clone"))]
+    is_alive: bool,
 }
 
 impl MinecraftConnection<TcpStream> {
@@ -77,10 +78,14 @@ impl MinecraftConnection<TcpStream> {
 
         Ok(MinecraftConnection {
             stream,
-            #[cfg(feature = "atomic_compression")]
+            #[cfg(feature = "atomic_clone")]
             compression: Arc::new(AtomicUsize::new(usize::MAX)),
-            #[cfg(not(feature = "atomic_compression"))]
+            #[cfg(not(feature = "atomic_clone"))]
             compression: None,
+            #[cfg(feature = "atomic_clone")]
+            is_alive: Arc::new(AtomicBool::new(true)),
+            #[cfg(not(feature = "atomic_clone"))]
+            is_alive: true,
             compression_type: 1,
         })
     }
@@ -90,8 +95,17 @@ impl MinecraftConnection<TcpStream> {
     }
 
     /// Close TcpStream
+    #[cfg(not(feature = "atomic_clone"))]
+    pub fn close(&mut self) {
+        let _ = self.stream.shutdown(std::net::Shutdown::Both);
+        self.is_alive = false;
+    }
+
+    /// Close TcpStream
+    #[cfg(feature = "atomic_clone")]
     pub fn close(&self) {
         let _ = self.stream.shutdown(std::net::Shutdown::Both);
+        self.is_alive.store(false, Ordering::Relaxed);
     }
 
     /// Try clone MinecraftConnection with compression and stream
@@ -99,6 +113,7 @@ impl MinecraftConnection<TcpStream> {
         match self.stream.try_clone() {
             Ok(stream) => Ok(MinecraftConnection {
                 stream,
+                is_alive: self.is_alive.clone(),
                 compression: self.compression.clone(),
                 compression_type: self.compression_type,
             }),
@@ -131,17 +146,45 @@ impl<T: Read + Write> MinecraftConnection<T> {
     pub fn new(stream: T) -> MinecraftConnection<T> {
         MinecraftConnection {
             stream,
-            #[cfg(feature = "atomic_compression")]
+            #[cfg(feature = "atomic_clone")]
             compression: Arc::new(AtomicUsize::new(usize::MAX)),
-            #[cfg(not(feature = "atomic_compression"))]
+            #[cfg(not(feature = "atomic_clone"))]
             compression: None,
+            #[cfg(feature = "atomic_clone")]
+            is_alive: Arc::new(AtomicBool::new(true)),
+            #[cfg(not(feature = "atomic_clone"))]
+            is_alive: true,
             compression_type: 1,
         }
     }
 
+    /// Set alive state
+    #[cfg(not(feature = "atomic_clone"))]
+    pub fn set_alive(&mut self, state: bool) {
+        self.is_alive = state;
+    }
+
+    /// Set alive state
+    #[cfg(feature = "atomic_clone")]
+    pub fn set_alive(&self, state: bool) {
+        self.is_alive.store(state, Ordering::Relaxed);
+    }
+
+    /// Is connection alive
+    #[cfg(not(feature = "atomic_clone"))]
+    pub fn set_alive(&self) -> bool {
+        self.is_alive
+    }
+
+    /// Is connection alive
+    #[cfg(feature = "atomic_clone")]
+    pub fn is_alive(&self) -> bool {
+        self.is_alive.load(Ordering::Relaxed)
+    }
+
     /// Set compression threshold
     pub fn set_compression(&mut self, threshold: Option<usize>) {
-        #[cfg(feature = "atomic_compression")]
+        #[cfg(feature = "atomic_clone")]
         self.compression.store(
             match threshold {
                 Some(t) => t,
@@ -149,7 +192,7 @@ impl<T: Read + Write> MinecraftConnection<T> {
             },
             Ordering::Relaxed,
         );
-        #[cfg(not(feature = "atomic_compression"))]
+        #[cfg(not(feature = "atomic_clone"))]
         {
             self.compression = threshold;
         }
@@ -157,7 +200,7 @@ impl<T: Read + Write> MinecraftConnection<T> {
 
     /// Get compression threshold
     pub fn compression(&self) -> Option<usize> {
-        #[cfg(feature = "atomic_compression")]
+        #[cfg(feature = "atomic_clone")]
         {
             let threshold = self.compression.load(Ordering::Relaxed);
             if threshold == usize::MAX {
@@ -166,7 +209,7 @@ impl<T: Read + Write> MinecraftConnection<T> {
                 return Some(threshold)
             }
         }
-        #[cfg(not(feature = "atomic_compression"))]
+        #[cfg(not(feature = "atomic_clone"))]
         {
             self.compression
         }
@@ -202,7 +245,11 @@ impl<T: Read + Write> MinecraftConnection<T> {
 
     /// Read [`Packet`](Packet) from connection
     pub fn read_packet(&mut self) -> Result<Packet, ProtocolError> {
-        #[cfg(feature = "atomic_compression")]
+        if !self.is_alive() {
+            return Err(ProtocolError::ConnectionClosedError);
+        }
+
+        #[cfg(feature = "atomic_clone")]
         {
             return read_packet_atomic(
                 &mut self.stream,
@@ -211,13 +258,17 @@ impl<T: Read + Write> MinecraftConnection<T> {
             )
         }
 
-        #[cfg(not(feature = "atomic_compression"))]
+        #[cfg(not(feature = "atomic_clone"))]
         read_packet(&mut self.stream, self.compression)
     }
 
     /// Write [`Packet`](Packet) to connection
     pub fn write_packet(&mut self, packet: &Packet) -> Result<(), ProtocolError> {
-        #[cfg(feature = "atomic_compression")]
+        if !self.is_alive() {
+            return Err(ProtocolError::ConnectionClosedError);
+        }
+        
+        #[cfg(feature = "atomic_clone")]
         {
             return write_packet_atomic(
                 &mut self.stream,
@@ -228,7 +279,7 @@ impl<T: Read + Write> MinecraftConnection<T> {
             )
         }
 
-        #[cfg(not(feature = "atomic_compression"))]
+        #[cfg(not(feature = "atomic_clone"))]
         {
             write_packet(&mut self.stream, self.compression, self.compression_type, packet)
         }
@@ -241,6 +292,7 @@ impl<T: Read + Write + Clone> MinecraftConnection<T> {
         MinecraftConnection {
             stream: self.stream.clone(),
             compression: self.compression.clone(),
+            is_alive: self.is_alive.clone(),
             compression_type: self.compression_type,
         }
     }
@@ -351,7 +403,7 @@ pub fn write_packet<T: Write>(
 /// usize::MAX means that compression is disabled
 ///
 /// `ordering` is order how to load atomic
-#[cfg(feature = "atomic_compression")]
+#[cfg(feature = "atomic_clone")]
 pub fn read_packet_atomic<T: Read>(
     stream: &mut T,
     compression: Arc<AtomicUsize>,
@@ -373,7 +425,7 @@ pub fn read_packet_atomic<T: Read>(
 /// `compression_type` is integer from 0 (none) to 9 (longest)
 /// 1 is fast compression
 /// 6 is normal compression
-#[cfg(feature = "atomic_compression")]
+#[cfg(feature = "atomic_clone")]
 pub fn write_packet_atomic<T: Write>(
     stream: &mut T,
     compression: Arc<AtomicUsize>,
