@@ -156,19 +156,19 @@ impl<T: Read + Write> MinecraftConnection<T> {
 
     /// Set alive state
     #[cfg(not(feature = "atomic_clone"))]
-    pub fn set_alive(&mut self, state: bool) {
+    fn set_alive(&mut self, state: bool) {
         self.is_alive = state;
     }
 
     /// Set alive state
     #[cfg(feature = "atomic_clone")]
-    pub fn set_alive(&self, state: bool) {
+    fn set_alive(&self, state: bool) {
         self.is_alive.store(state, Ordering::Relaxed);
     }
 
     /// Is connection alive
     #[cfg(not(feature = "atomic_clone"))]
-    pub fn set_alive(&self) -> bool {
+    pub fn is_alive(&self) -> bool {
         self.is_alive
     }
 
