@@ -11,7 +11,7 @@ rust_mc_proto = { git = "https://github.com/MeexReay/rust_mc_proto" } # unstable
 ```
 
 Features:
-- `atomic_clone`
+- `atomic_clone` - clone MinecraftConnection like TcpStream. with compression and is_alive fields
 
 ## How to use
 
@@ -24,40 +24,21 @@ pub type MCConnTcp = MinecraftConnection<TcpStream>;
 Example of receiving motd:
 
 ```rust
-use rust_mc_proto::{Packet, ProtocolError, MCConnTcp, DataBufferReader, DataBufferWriter};
+use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConnTcp, Packet, ProtocolError};
 
-fn send_handshake(
-    conn: &mut MCConnTcp,
-    protocol_version: u16,
-    server_address: &str,
-    server_port: u16,
-    next_state: u8
-) -> Result<(), ProtocolError> {
+fn main() -> Result<(), ProtocolError> {
+    let mut conn = MCConnTcp::connect("mc.hypixel.net:25565")?; // connecting
+
     conn.write_packet(&Packet::build(0x00, |packet| {
-        packet.write_u16_varint(protocol_version)?;
-        packet.write_string(server_address)?;
-        packet.write_unsigned_short(server_port)?;
-        packet.write_u8_varint(next_state)
-    })?)
-}
+        packet.write_u16_varint(765)?; // protocol_version
+        packet.write_string("mc.hypixel.net")?; // server_address
+        packet.write_unsigned_short(25565)?; // server_port
+        packet.write_u8_varint(1) // next_state
+    })?)?; // handshake packet
 
-fn send_status_request(conn: &mut MCConnTcp) -> Result<(), ProtocolError> {
-    conn.write_packet(&Packet::empty(0x00))
-}
+    conn.write_packet(&Packet::empty(0x00))?; // status request packet
 
-fn read_status_response(conn: &mut MCConnTcp) -> Result<String, ProtocolError> {
-    conn.read_packet()?.read_string()
-}
-
-fn main() {
-    let mut conn = MCConnTcp::connect("mc.hypixel.net:25565").unwrap();
-
-    send_handshake(&mut conn, 765, "mc.hypixel.net", 25565, 1).unwrap();
-    send_status_request(&mut conn).unwrap();
-
-    let motd = read_status_response(&mut conn).unwrap();
-
-    dbg!(motd);
+    Ok(println!("motd: {}", conn.read_packet()?.read_string()?)) // status response packet
 }
 ```
 

@@ -1,4 +1,4 @@
-use std::{net::TcpListener, sync::{Arc, Mutex}, thread};
+use std::{net::TcpListener, sync::Arc, thread};
 use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConnTcp, MinecraftConnection, Packet, ProtocolError};
 
 /*
@@ -8,6 +8,7 @@ use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConnTcp, MinecraftConn
 
 */
 
+#[derive(Clone)]
 struct MinecraftServer {
     server_ip: String,
     server_port: u16,
@@ -28,19 +29,23 @@ impl MinecraftServer {
     fn start(self) {
         let addr = self.server_ip.clone() + ":" + &self.server_port.to_string();
         let listener = TcpListener::bind(addr).unwrap();
-        let server = Arc::new(Mutex::new(self));
+
+        let this = Arc::new(self);
 
         for stream in listener.incoming() {
             let stream = stream.unwrap();
-            let local_server = server.clone();
 
-            thread::spawn(move || {
-                Self::accept_client(MinecraftConnection::new(stream), local_server).unwrap();
+            thread::spawn({
+                let this = this.clone();
+
+                move || {
+                    Self::accept_client(this, MinecraftConnection::new(stream)).unwrap();
+                }
             });
         }
     }
 
-    fn accept_client(mut conn: MCConnTcp, server: Arc<Mutex<MinecraftServer>>) -> Result<(), ProtocolError> {
+    fn accept_client(self: Arc<Self>, mut conn: MCConnTcp) -> Result<(), ProtocolError> {
         let mut handshake = false;
         
         loop {
@@ -48,7 +53,7 @@ impl MinecraftServer {
     
             if handshake {
                 if packet.id() == 0x00 {
-                    let motd = server.lock().unwrap().motd.clone();
+                    let motd = self.motd.clone();
 
                     conn.write_packet(&Packet::build(0x00, |status| 
                         status.write_string(&motd)
@@ -66,11 +71,13 @@ impl MinecraftServer {
     
                 if next_state != 1 { break; }
     
-                println!("Client handshake info:");
-                println!("  IP: {}", conn.get_ref().peer_addr().unwrap());
-                println!("  Protocol version: {}", protocol_version);
-                println!("  Server address: {}", server_address);
-                println!("  Server port: {}", server_port);
+                println!(
+                    "{} > protocol: {} server: {}:{}", 
+                    conn.get_ref().peer_addr().unwrap(), 
+                    protocol_version, 
+                    server_address, 
+                    server_port
+                );
     
                 handshake = true;
             } else {
@@ -111,5 +118,6 @@ fn main() {
             \"favicon\": \"data:image/png;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=\"
         }"
     );
+
     server.start();
 }
