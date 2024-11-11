@@ -15,12 +15,6 @@ Features:
 
 ## How to use
 
-For reference:
-```rust
-pub type MCConn<T> = MinecraftConnection<T>;
-pub type MCConnTcp = MinecraftConnection<TcpStream>;
-```
-
 Example of receiving motd:
 
 ```rust
@@ -42,7 +36,8 @@ fn main() -> Result<(), ProtocolError> {
 }
 ```
 
-[More examples](https://github.com/MeexReay/rust_mc_proto/tree/main/examples)
+[More examples](https://github.com/MeexReay/rust_mc_proto/tree/main/examples) \
+[Documentation](https://docs.rs/rust_mc_proto/)
 
 ### Contributing
 
