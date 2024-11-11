@@ -90,10 +90,6 @@ impl MinecraftConnection<TcpStream> {
         })
     }
 
-    pub fn set_nonblocking(&mut self, state: bool) {
-        self.stream.set_nonblocking(state).unwrap();
-    }
-
     /// Close TcpStream
     #[cfg(not(feature = "atomic_clone"))]
     pub fn close(&mut self) {
