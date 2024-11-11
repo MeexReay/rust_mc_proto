@@ -11,7 +11,7 @@ rust_mc_proto = { git = "https://github.com/MeexReay/rust_mc_proto" } # unstable
 ```
 
 Features:
-- `atomic_clone` - clone MinecraftConnection like TcpStream. with compression and is_alive fields
+- `atomic_clone` - Atomic clone of MinecraftConnection
 
 ## How to use
 
