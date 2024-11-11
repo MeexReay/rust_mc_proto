@@ -204,8 +204,16 @@ pub trait DataBufferReader {
 impl<R: Read> DataBufferReader for R {
     fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
         let mut buf = vec![0; size];
-        match self.read_exact(&mut buf) {
-            Ok(_) => Ok(buf),
+        match self.read(&mut buf) {
+            Ok(i) => if i == size {
+                Ok(buf)
+            } else if i == 0 {
+                Err(ProtocolError::ConnectionClosedError)
+            } else {
+                buf.truncate(i);
+                buf.append(&mut self.read_bytes(size-i)?);
+                Ok(buf)
+            },
             Err(_) => Err(ProtocolError::ReadError),
         }
     }

@@ -251,15 +251,27 @@ impl<T: Read + Write> MinecraftConnection<T> {
 
         #[cfg(feature = "atomic_clone")]
         {
-            return read_packet_atomic(
-                &mut self.stream,
-                self.compression.clone(),
-                Ordering::Relaxed,
-            )
+            return match read_packet_atomic(
+                            &mut self.stream,
+                            self.compression.clone(),
+                            Ordering::Relaxed,
+                        ) {
+                Err(ProtocolError::ConnectionClosedError) => {
+                    self.set_alive(false);
+                    Err(ProtocolError::ConnectionClosedError)
+                },
+                i => i
+            };
         }
 
         #[cfg(not(feature = "atomic_clone"))]
-        read_packet(&mut self.stream, self.compression)
+        match read_packet(&mut self.stream, self.compression) {
+            Err(ProtocolError::ConnectionClosedError) => {
+                self.set_alive(false);
+                Err(ProtocolError::ConnectionClosedError)
+            },
+            i => i
+        }
     }
 
     /// Write [`Packet`](Packet) to connection
