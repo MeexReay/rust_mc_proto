@@ -5,7 +5,7 @@ macro_rules! size_varint {
         let mut size: usize = 0;
 
         loop {
-            let next = DataBufferReader::read_byte($self).or(Err(ProtocolError::VarIntError))?;
+            let next = DataBufferReader::read_byte($self)?;
             size += 1;
 
             if shift >= (std::mem::size_of::<$type>() * 8) as $type {
@@ -29,7 +29,7 @@ macro_rules! read_varint {
         let mut decoded: $type = 0;
 
         loop {
-            let next = DataBufferReader::read_byte($self).or(Err(ProtocolError::VarIntError))?;
+            let next = DataBufferReader::read_byte($self)?;
 
             if shift >= (std::mem::size_of::<$type>() * 8) as $type {
                 return Err(ProtocolError::VarIntError);
