@@ -51,17 +51,16 @@ macro_rules! write_varint {
         let mut value: $type = $value;
 
         if value == 0 {
-            DataBufferWriter::write_byte($self, 0).or(Err(ProtocolError::VarIntError))
+            DataBufferWriter::write_byte($self, 0)
         } else {
             while value >= 0b10000000 {
                 let next: u8 = ((value & 0b01111111) as u8) | 0b10000000;
                 value >>= 7;
 
-                DataBufferWriter::write_byte($self, next).or(Err(ProtocolError::VarIntError))?;
+                DataBufferWriter::write_byte($self, next)?;
             }
 
             DataBufferWriter::write_byte($self, (value & 0b01111111) as u8)
-                .or(Err(ProtocolError::VarIntError))
         }
     }};
 }
