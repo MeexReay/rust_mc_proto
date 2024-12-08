@@ -7,7 +7,7 @@ This crate can be used for a server on rust idk -_-
 
 ```toml
 rust_mc_proto = "0.1.17" # stable version
-rust_mc_proto = { git = "https://github.com/MeexReay/rust_mc_proto" } # unstable version
+rust_mc_proto = { git = "https://git.meex.lol/MeexReay/rust_mc_proto" } # unstable version
 ```
 
 Features:
@@ -36,7 +36,7 @@ fn main() -> Result<(), ProtocolError> {
 }
 ```
 
-[More examples](https://github.com/MeexReay/rust_mc_proto/tree/main/examples) \
+[More examples](https://git.meex.lol/MeexReay/rust_mc_proto/src/branch/main/examples) \
 [Documentation](https://docs.rs/rust_mc_proto/)
 
 ### Contributing
