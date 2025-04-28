@@ -7,7 +7,7 @@ license-file = "LICENSE"
 readme = "README.md"
 keywords = ["minecraft", "protocol", "packets", "lightweight"]
 
-version = "0.1.17"
+version = "0.1.18"
 edition = "2024"
 
 [dependencies]

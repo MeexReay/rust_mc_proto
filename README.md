@@ -6,7 +6,7 @@ This crate can be used for a server on rust idk -_-
 ## Setup
 
 ```toml
-rust_mc_proto = "0.1.17" # stable version
+rust_mc_proto = "0.1.18" # stable version
 rust_mc_proto = { git = "https://git.meex.lol/MeexReay/rust_mc_proto" } # unstable version
 ```
 
