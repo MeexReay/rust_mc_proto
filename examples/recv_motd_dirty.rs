@@ -1,4 +1,4 @@
-use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConnTcp, Packet, ProtocolError};
+use rust_mc_proto::{DataReader, DataWriter, MCConnTcp, Packet, ProtocolError};
 
 fn main() -> Result<(), ProtocolError> {
     let mut conn = MCConnTcp::connect("localhost:25565")?; // connecting

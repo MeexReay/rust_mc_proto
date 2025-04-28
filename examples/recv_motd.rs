@@ -1,4 +1,4 @@
-use rust_mc_proto::{Packet, ProtocolError, MCConnTcp, DataBufferReader, DataBufferWriter};
+use rust_mc_proto::{Packet, ProtocolError, MCConnTcp, DataReader, DataWriter};
 
 /*
 

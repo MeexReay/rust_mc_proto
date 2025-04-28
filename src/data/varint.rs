@@ -5,7 +5,7 @@ macro_rules! size_varint {
         let mut size: usize = 0;
 
         loop {
-            let next = DataBufferReader::read_byte($self)?;
+            let next = DataReader::read_byte($self)?;
             size += 1;
 
             if shift >= (std::mem::size_of::<$type>() * 8) as $type {
@@ -29,7 +29,7 @@ macro_rules! read_varint {
         let mut decoded: $type = 0;
 
         loop {
-            let next = DataBufferReader::read_byte($self)?;
+            let next = DataReader::read_byte($self)?;
 
             if shift >= (std::mem::size_of::<$type>() * 8) as $type {
                 return Err(ProtocolError::VarIntError);
@@ -51,16 +51,16 @@ macro_rules! write_varint {
         let mut value: $type = $value;
 
         if value == 0 {
-            DataBufferWriter::write_byte($self, 0)
+            DataWriter::write_byte($self, 0)
         } else {
             while value >= 0b10000000 {
                 let next: u8 = ((value & 0b01111111) as u8) | 0b10000000;
                 value >>= 7;
 
-                DataBufferWriter::write_byte($self, next)?;
+                DataWriter::write_byte($self, next)?;
             }
 
-            DataBufferWriter::write_byte($self, (value & 0b01111111) as u8)
+            DataWriter::write_byte($self, (value & 0b01111111) as u8)
         }
     }};
 }

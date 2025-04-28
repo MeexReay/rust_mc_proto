@@ -1,16 +1,15 @@
 #[cfg(test)]
 mod tests;
 
-pub mod data_buffer;
+pub mod data;
 pub mod packet;
 pub mod zigzag;
 
 pub use crate::{
-    data_buffer::{DataBufferReader, DataBufferWriter},
+    data::{DataReader, DataWriter},
     packet::Packet,
 };
 
-use bytebuffer::ByteBuffer;
 use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
 use std::{
     error::Error, fmt, io::{Read, Write}, net::{TcpStream, ToSocketAddrs}, sync::atomic::AtomicBool, usize
@@ -118,7 +117,7 @@ impl MinecraftConnection<TcpStream> {
     }
 }
 
-impl<T: Read + Write> DataBufferReader for MinecraftConnection<T> {
+impl<T: Read + Write> DataReader for MinecraftConnection<T> {
     fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
         let mut buf = vec![0; size];
         match self.stream.read_exact(&mut buf) {
@@ -128,7 +127,7 @@ impl<T: Read + Write> DataBufferReader for MinecraftConnection<T> {
     }
 }
 
-impl<T: Read + Write> DataBufferWriter for MinecraftConnection<T> {
+impl<T: Read + Write> DataWriter for MinecraftConnection<T> {
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ProtocolError> {
         match self.stream.write_all(bytes) {
             Ok(_) => Ok(()),
@@ -373,34 +372,34 @@ pub fn write_packet<T: Write>(
     compression_type: u32,
     packet: &Packet,
 ) -> Result<(), ProtocolError> {
-    let mut buf = ByteBuffer::new();
+    let mut buf = Vec::new();
 
-    let mut data_buf = ByteBuffer::new();
+    let mut data_buf = Vec::new();
     data_buf.write_u8_varint(packet.id())?;
-    data_buf.write_buffer(packet.buffer())?;
+    data_buf.write_bytes(packet.get_bytes())?;
 
     if let Some(compression) = compression {
-        let mut packet_buf = ByteBuffer::new();
+        let mut packet_buf = Vec::new();
 
         if data_buf.len() >= compression {
-            let compressed_data = compress_zlib(data_buf.as_bytes(), compression_type)?;
+            let compressed_data = compress_zlib(&data_buf, compression_type)?;
             packet_buf.write_usize_varint(data_buf.len())?;
             packet_buf
                 .write_all(&compressed_data)
                 .or(Err(ProtocolError::WriteError))?;
         } else {
             packet_buf.write_usize_varint(0)?;
-            packet_buf.write_buffer(&data_buf)?;
+            packet_buf.write_bytes(&data_buf)?;
         }
 
         buf.write_usize_varint(packet_buf.len())?;
-        buf.write_buffer(&packet_buf)?;
+        buf.write_bytes(&packet_buf)?;
     } else {
         buf.write_usize_varint(data_buf.len())?;
-        buf.write_buffer(&data_buf)?;
+        buf.write_bytes(&data_buf)?;
     }
 
-    stream.write_buffer(&buf)?;
+    stream.write_bytes(&buf)?;
 
     Ok(())
 }

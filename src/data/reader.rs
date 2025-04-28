@@ -1,24 +1,19 @@
 use crate::{
-    data_buffer::varint::{read_varint, size_varint},
+    data::varint::{read_varint, size_varint},
     zigzag::Zigzag,
     ProtocolError,
 };
-use bytebuffer::ByteBuffer;
 use std::io::Read;
 use uuid::Uuid;
 
 /// Packet data reader trait
-pub trait DataBufferReader {
+pub trait DataReader {
     /// Read bytes
     fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError>;
 
     /// Read byte
     fn read_byte(&mut self) -> Result<u8, ProtocolError> {
         Ok(self.read_bytes(1)?[0])
-    }
-    /// Read [`ByteBuffer`](ByteBuffer)
-    fn read_buffer(&mut self, size: usize) -> Result<ByteBuffer, ProtocolError> {
-        Ok(ByteBuffer::from_vec(self.read_bytes(size)?))
     }
     /// Read String
     fn read_string(&mut self) -> Result<String, ProtocolError> {
@@ -201,7 +196,7 @@ pub trait DataBufferReader {
     }
 }
 
-impl<R: Read> DataBufferReader for R {
+impl<R: Read> DataReader for R {
     fn read_bytes(&mut self, size: usize) -> Result<Vec<u8>, ProtocolError> {
         let mut buf = vec![0; size];
         match self.read(&mut buf) {

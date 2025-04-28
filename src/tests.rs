@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use super::*;
-use std::{net::TcpListener, thread};
+use std::{io::Cursor, net::TcpListener, thread};
 
 #[test]
 fn test_data_transfer() -> Result<(), ProtocolError> {
@@ -134,12 +134,15 @@ fn test_data_transfer() -> Result<(), ProtocolError> {
 
 #[test]
 fn test_compression() -> Result<(), ProtocolError> {
-    let mut conn = MCConn::new(ByteBuffer::new());
+    let mut conn = MCConn::new(Cursor::new(Vec::new()));
     conn.set_compression(Some(5));
 
     let mut packet_1 = Packet::empty(0x12);
     packet_1.write_bytes(b"1234567890qwertyuiopasdfghjklzxcvbnm")?;
+    dbg!(&packet_1);
     conn.write_packet(&packet_1)?;
+
+    conn.get_mut().set_position(0);
 
     let mut packet_2 = conn.read_packet()?;
 

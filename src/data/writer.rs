@@ -1,20 +1,15 @@
-use crate::{data_buffer::varint::write_varint, zigzag::Zigzag, ProtocolError};
-use bytebuffer::ByteBuffer;
+use crate::{data::varint::write_varint, zigzag::Zigzag, ProtocolError};
 use std::io::Write;
 use uuid::Uuid;
 
 /// Packet data writer trait
-pub trait DataBufferWriter {
+pub trait DataWriter {
     /// Write bytes
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ProtocolError>;
 
     /// Write byte
     fn write_byte(&mut self, byte: u8) -> Result<(), ProtocolError> {
         self.write_bytes(&[byte])
-    }
-    /// Write [`ByteBuffer`](ByteBuffer)
-    fn write_buffer(&mut self, buffer: &ByteBuffer) -> Result<(), ProtocolError> {
-        self.write_bytes(buffer.as_bytes())
     }
     /// Write String
     fn write_string(&mut self, val: &str) -> Result<(), ProtocolError> {
@@ -127,7 +122,7 @@ pub trait DataBufferWriter {
     }
 }
 
-impl<W: Write> DataBufferWriter for W {
+impl<W: Write> DataWriter for W {
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ProtocolError> {
         match self.write_all(bytes) {
             Ok(_) => Ok(()),
