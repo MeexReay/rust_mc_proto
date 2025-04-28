@@ -5,6 +5,10 @@ pub mod data;
 pub mod packet;
 pub mod zigzag;
 
+pub mod prelude {
+    pub use crate::{DataReader, DataWriter};
+}
+
 pub use crate::{
     data::{DataReader, DataWriter},
     packet::Packet,

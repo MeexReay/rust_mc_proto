@@ -1,5 +1,5 @@
 use std::{net::TcpListener, sync::Arc, thread};
-use rust_mc_proto::{DataReader, DataWriter, MCConnTcp, MinecraftConnection, Packet, ProtocolError};
+use rust_mc_proto::{prelude::*, MCConnTcp, MinecraftConnection, Packet, ProtocolError};
 
 /*
 
