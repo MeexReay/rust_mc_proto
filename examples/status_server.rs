@@ -8,7 +8,6 @@ use rust_mc_proto::{DataReader, DataWriter, MCConnTcp, MinecraftConnection, Pack
 
 */
 
-#[derive(Clone)]
 struct MinecraftServer {
     server_ip: String,
     server_port: u16,

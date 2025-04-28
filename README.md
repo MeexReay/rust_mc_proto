@@ -18,7 +18,7 @@ Features:
 Example of receiving motd:
 
 ```rust
-use rust_mc_proto::{DataBufferReader, DataBufferWriter, MCConnTcp, Packet, ProtocolError};
+use rust_mc_proto::{DataReader, DataWriter, MCConnTcp, Packet, ProtocolError};
 
 fn main() -> Result<(), ProtocolError> {
     let mut conn = MCConnTcp::connect("mc.hypixel.net:25565")?; // connecting
