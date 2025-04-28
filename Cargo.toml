@@ -8,7 +8,7 @@ readme = "README.md"
 keywords = ["minecraft", "protocol", "packets", "lightweight"]
 
 version = "0.1.17"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 flate2 = "1.1.1"
