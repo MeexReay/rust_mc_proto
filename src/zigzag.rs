@@ -1,3 +1,5 @@
+//! VarInt reading helper 
+
 pub trait Zigzag<T> {
     fn zigzag(&self) -> T;
 }

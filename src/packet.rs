@@ -1,3 +1,5 @@
+//! Minecraft packet struct
+
 use crate::data::{DataReader, DataWriter};
 use crate::ProtocolError;
 use std::io::Cursor;
