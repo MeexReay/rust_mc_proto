@@ -1,3 +1,6 @@
+> [!WARNING]
+> Migrated to my selfhost [Gitea](https://git.meex.lol/MeexReay/rust_mc_proto)
+
 # rust_mc_proto
 Lightweight minecraft packets protocol support in pure rust \
 Has compression (`MinecraftConnection::set_compression`) \
